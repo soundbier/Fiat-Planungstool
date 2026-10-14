@@ -1,0 +1,75 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+    function validCode(code) {
+      return code is string && code.size() >= 20 && code.size() <= 64
+        && code.matches('^[A-Za-z0-9]+$');
+    }
+    function validPerson(p) {
+      return p in ['Lukas', 'Marie'];
+    }
+    function validDate(d) {
+      return d is string && d.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+    }
+    function validTime(t) {
+      return t is string && t.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$');
+    }
+    function validNote(n) {
+      return n is string && n.size() <= 300;
+    }
+    function createdAtOk() {
+      return request.method == 'create'
+        ? request.resource.data.createdAt == request.time
+        : request.resource.data.createdAt == resource.data.createdAt;
+    }
+
+    function validBooking(d) {
+      return d.keys().hasOnly(['person', 'date', 'endDate', 'startTime', 'endTime', 'note', 'createdAt'])
+        && d.keys().hasAll(['person', 'date', 'endDate', 'startTime', 'endTime', 'note', 'createdAt'])
+        && validPerson(d.person)
+        && validDate(d.date) && validDate(d.endDate) && d.endDate >= d.date
+        && validTime(d.startTime) && validTime(d.endTime)
+        && (d.endDate > d.date || d.endTime > d.startTime)
+        && validNote(d.note);
+    }
+
+    function validEntry(d) {
+      return d.keys().hasOnly(['person', 'type', 'date', 'amount', 'cost', 'odometer', 'note', 'createdAt'])
+        && d.keys().hasAll(['person', 'type', 'date', 'amount', 'cost', 'odometer', 'note', 'createdAt'])
+        && validPerson(d.person)
+        && d.type in ['fuel', 'charge']
+        && validDate(d.date)
+        && d.amount is number && d.amount > 0 && d.amount < 10000
+        && d.cost is number && d.cost >= 0 && d.cost < 100000
+        && (d.odometer == null || (d.odometer is int && d.odometer >= 0 && d.odometer < 10000000))
+        && validNote(d.note);
+    }
+
+    // Kein Zugriff auf households selbst – insbesondere kein list.
+    match /households/{code} {
+      allow read, write: if false;
+
+      match /bookings/{id} {
+        allow get, list: if signedIn() && validCode(code);
+        allow create, update: if signedIn() && validCode(code)
+          && validBooking(request.resource.data) && createdAtOk();
+        allow delete: if signedIn() && validCode(code);
+      }
+
+      match /entries/{id} {
+        allow get, list: if signedIn() && validCode(code);
+        allow create, update: if signedIn() && validCode(code)
+          && validEntry(request.resource.data) && createdAtOk();
+        allow delete: if signedIn() && validCode(code);
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
