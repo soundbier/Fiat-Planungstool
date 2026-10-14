@@ -147,13 +147,24 @@ async function shareHousehold() {
 
 /* ---------- Data ---------- */
 
+let offlineTimer = null;
 function startSync() {
   stopSync();
   const onErr = (e) => { console.error(e); state.error = 'Synchronisation fehlgeschlagen: ' + e.message; render(); };
-  unsubs.push(subscribeBookings(state.code, (d) => { state.bookings = d; render(); }, onErr));
-  unsubs.push(subscribeEntries(state.code, (d) => { state.entries = d; render(); }, onErr));
+  const meta = { bookings: null, entries: null };
+  const onMeta = (key, m) => {
+    meta[key] = m;
+    const offline = Object.values(meta).some((x) => x && (x.fromCache || x.hasPendingWrites));
+    clearTimeout(offlineTimer);
+    if (!offline) { if (state.offline) { state.offline = false; render(); } return; }
+    offlineTimer = setTimeout(() => { state.offline = true; render(); }, 5000);
+  };
+  unsubs.push(subscribeBookings(state.code, (d, m) => { state.bookings = d; onMeta('bookings', m); render(); }, onErr));
+  unsubs.push(subscribeEntries(state.code, (d, m) => { state.entries = d; onMeta('entries', m); render(); }, onErr));
 }
 function stopSync() {
+  clearTimeout(offlineTimer);
+  state.offline = false;
   unsubs.forEach((u) => u());
   unsubs = [];
   state.bookings = [];
@@ -769,6 +780,7 @@ function render() {
       <span class="me ${state.name.toLowerCase()}">${esc(state.name)}</span>
     </header>
     ${state.error ? `<div class="banner">${esc(state.error)}</div>` : ''}
+    ${state.offline && !state.error ? `<div class="banner">Keine Verbindung zum Server – Änderungen sind nur auf diesem Gerät gespeichert.</div>` : ''}
     <main class="content">${views[state.tab]()}</main>
     <nav class="tabbar">
       ${TABS.map((t) => `<button class="tab ${t.id === state.tab ? 'active' : ''}" data-action="tab" data-tab="${t.id}">
