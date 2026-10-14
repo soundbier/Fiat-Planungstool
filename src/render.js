@@ -86,7 +86,7 @@ export function render() {
       </span>
     </header>
     ${state.error ? `<div class="banner" role="alert">${esc(state.error)}</div>` : ''}
-    ${state.sync === 'offline' && !state.error ? `<div class="banner" role="status">Keine Verbindung zum Server – Änderungen sind nur auf diesem Gerät gespeichert und werden später übertragen.</div>` : ''}
+    ${state.sync === 'offline' && !state.error ? `<div class="banner soft" role="status">Offline – Änderungen werden übertragen, sobald wieder eine Verbindung besteht.</div>` : ''}
     <main class="content"><h1 class="page-title">${esc(TABS.find((t) => t.id === state.tab).label)}</h1>${views[state.tab]()}</main>
     <nav class="tabbar" aria-label="Hauptnavigation">
       ${TABS.filter((t) => t.id !== 'settings').map((t) => `<button class="tab ${t.id === state.tab ? 'active' : ''}" data-action="tab" data-tab="${t.id}"${t.id === state.tab ? ' aria-current="page"' : ''}>

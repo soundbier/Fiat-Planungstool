@@ -25,10 +25,11 @@ export function renderReminders() {
         </div>
         <div class="item-actions">
           <button class="btn btn-sm" data-action="reminder-done" data-id="${esc(r.id)}">Erledigt</button>
-          <button class="icon-btn small" data-action="open-reminder" data-id="${esc(r.id)}" aria-label="Bearbeiten">✎</button>
+          <button class="icon-btn small" data-action="open-reminder" data-id="${esc(r.id)}" aria-label="Bearbeiten">${icon('edit')}</button>
         </div>
       </li>`).join('')}</ul></section>` : `
       <section class="card empty-state">
+        <span class="empty-icon">${icon('bell')}</span>
         <p><strong>Keine Fristen</strong></p>
         <p class="muted">HU/TÜV, Service, Reifenwechsel, Versicherung … eintragen. Fällige Fristen (≤ ${DUE_SOON_DAYS} Tage) erscheinen im Kalender und als Zähler im Menü.</p>
       </section>`}
@@ -45,7 +46,7 @@ export function renderReminderSheet() {
       <form class="dialog" id="reminder-form" data-id="${esc(r?.id || '')}" role="dialog" aria-modal="true" aria-labelledby="reminder-title">
         <div class="sheet-head">
           <h3 id="reminder-title">${r ? 'Frist bearbeiten' : 'Neue Frist'}</h3>
-          <button class="icon-btn" type="button" data-action="close-reminder" aria-label="Schließen">✕</button>
+          <button class="icon-btn" type="button" data-action="close-reminder" aria-label="Schließen">${icon('close')}</button>
         </div>
         <div class="seg">
           ${cars().map((c) => `<label class="seg-opt"><input type="radio" name="car" value="${c.id}" ${c.id === car ? 'checked' : ''}><span>${esc(c.name)}</span></label>`).join('')}
