@@ -371,3 +371,4 @@ label > span { display: block; }
 .swatch { width: 34px; height: 34px; border-radius: 50%; border: 2px solid var(--card); outline: 2px solid transparent; padding: 0; }
 .swatch.active { outline-color: var(--text); }
 .btn-seg { font-size: 14px; }
+.toast span { white-space: nowrap; }
