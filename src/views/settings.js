@@ -4,7 +4,7 @@ import { MAX_ITEMS, sanitizeSetup, slugId } from '../lib/model.js';
 import { esc, fmtTime, isoDate, mondayOf, shortRange, weekNumber } from '../lib/util.js';
 import { TABS, render } from '../render.js';
 import { SWATCHES, applyColors, cars, pc, people, prefs, state } from '../state.js';
-import { errText, toast } from '../ui.js';
+import { errText, icon, toast } from '../ui.js';
 import { inviteBox } from './setup.js';
 
 /* ---------- Settings ---------- */
@@ -30,7 +30,7 @@ export function renderSettings() {
         ${people().map((p) => `<div class="edit-row">
           <i class="dot pc"${pc(p.id)}></i>
           <input name="p-${p.id}" value="${esc(p.name)}" maxlength="20" required aria-label="Name">
-          <button class="icon-btn small danger" type="button" data-action="remove-person" data-id="${p.id}" aria-label="${esc(p.name)} entfernen">✕</button>
+          <button class="icon-btn small danger" type="button" data-action="remove-person" data-id="${p.id}" aria-label="${esc(p.name)} entfernen">${icon('close')}</button>
         </div>`).join('')}
         ${people().length < MAX_ITEMS ? '<input name="new-person" maxlength="20" placeholder="Person hinzufügen" aria-label="Neue Person">' : ''}
         <p class="set-label">Autos</p>
@@ -38,7 +38,7 @@ export function renderSettings() {
           <input class="short" name="cs-${c.id}" value="${esc(c.short)}" maxlength="2" required aria-label="Kürzel">
           <input name="c-${c.id}" value="${esc(c.name)}" maxlength="30" required aria-label="Name">
           <select name="ck-${c.id}" aria-label="Antrieb">${kindOptions(c.kind)}</select>
-          <button class="icon-btn small danger" type="button" data-action="remove-car" data-id="${c.id}" aria-label="${esc(c.name)} entfernen">✕</button>
+          <button class="icon-btn small danger" type="button" data-action="remove-car" data-id="${c.id}" aria-label="${esc(c.name)} entfernen">${icon('close')}</button>
         </div>`).join('')}
         ${cars().length < MAX_ITEMS ? `<div class="edit-row">
           <input name="new-car" maxlength="30" placeholder="Auto hinzufügen" aria-label="Neues Auto">

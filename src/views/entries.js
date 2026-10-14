@@ -23,6 +23,7 @@ export function renderEntries() {
         <ul class="list">${g.items.map(entryItem).join('')}</ul>
       </section>`).join('') : `
       <section class="card empty-state">
+        <span class="empty-icon">${icon('fuel')}</span>
         <p><strong>Noch keine Einträge</strong></p>
         <p class="muted">Tanken, Laden, Werkstatt, Parken, Versicherung … einfach erfassen – die Auswertung rechnet den Rest.</p>
       </section>`}
@@ -37,7 +38,7 @@ export function renderEntrySheet() {
       <form class="dialog" id="entry-form" role="dialog" aria-modal="true" aria-labelledby="entry-title">
         <div class="sheet-head">
           <h3 id="entry-title">Neuer Eintrag</h3>
-          <button class="icon-btn" type="button" data-action="close-entry" aria-label="Schließen">✕</button>
+          <button class="icon-btn" type="button" data-action="close-entry" aria-label="Schließen">${icon('close')}</button>
         </div>
         <div class="seg">
           ${cars().map((c) => `<label class="seg-opt"><input type="radio" name="car" value="${c.id}" ${c.id === car ? 'checked' : ''}><span>${esc(c.name)}</span></label>`).join('')}
@@ -122,7 +123,7 @@ export function entryItem(e) {
       <strong>${eur.format(e.cost)}</strong> <span class="muted">${what}</span>
       <div class="note">${details}</div>
     </div>
-    <button class="icon-btn small danger" data-action="delete-entry" data-id="${esc(e.id)}" aria-label="Löschen">✕</button>
+    <button class="icon-btn small danger" data-action="delete-entry" data-id="${esc(e.id)}" aria-label="Löschen">${icon('trash')}</button>
   </li>`;
 }
 

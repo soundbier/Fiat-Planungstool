@@ -3,7 +3,7 @@ import { ALL, dueReminders } from '../lib/model.js';
 import { addDays, esc, fmtDate, fmtDateLong, isoDate, mondayOf, pad, shortRange, weekNumber } from '../lib/util.js';
 import { render } from '../render.js';
 import { carName, carOf, cars, cc, pc, people, personName, prefs, state } from '../state.js';
-import { toast } from '../ui.js';
+import { icon, toast } from '../ui.js';
 import { dueLabel } from './reminders.js';
 
 /* ---------- Calendar ---------- */
@@ -30,10 +30,10 @@ function renderWeek(today) {
   return `
     <section class="card cal" data-swipe="week">
       <div class="cal-head">
-        <button class="icon-btn" data-action="cal-week" data-delta="-7" aria-label="Vorherige Woche">‹</button>
+        <button class="icon-btn" data-action="cal-week" data-delta="-7" aria-label="Vorherige Woche">${icon('left')}</button>
         <h2>KW ${weekNumber(start)} <small class="muted">${shortRange(start)}</small></h2>
         ${isCurrent ? '' : '<button class="btn-text" data-action="cal-week-today">Heute</button>'}
-        <button class="icon-btn" data-action="cal-week" data-delta="7" aria-label="Nächste Woche">›</button>
+        <button class="icon-btn" data-action="cal-week" data-delta="7" aria-label="Nächste Woche">${icon('right')}</button>
       </div>
       ${viewToggle()}
       <ul class="week-list">
@@ -64,18 +64,15 @@ export function renderOverview() {
     <section class="overview">
       ${days.map(([iso, label]) => `
         <button class="card ov-day" data-action="open-day" data-day="${iso}">
-          <span class="ov-label">${label}</span>
-          ${cars().map((c) => `<span class="ov-row"><span class="ov-car">${esc(c.name)}</span>${driverChip(iso, c.id)}</span>`).join('')}
+          <span class="ov-label">${label} <span class="ov-date">${esc(fmtDate(iso))}</span></span>
+          ${cars().map((c) => `<span class="ov-slot"><span class="ov-car">${esc(c.name)}</span>${driverChip(iso, c.id)}</span>`).join('')}
         </button>`).join('')}
     </section>
-    ${due.length ? `<section class="card">
-      <div class="ov-due" role="link" tabindex="0" data-action="tab" data-tab="reminders">
-        <h3>Fristen</h3>
-        <ul class="list">${due.slice(0, 3).map((r) => `<li class="item">
-          <span class="car-tag cc"${cc(r.car)}>${esc(carOf(r.car)?.short || '?')}</span>
-          <span class="grow">${esc(r.title)}</span>${dueLabel(r)}</li>`).join('')}</ul>
-      </div>
-    </section>` : ''}`;
+    ${due.length ? `<button class="due-strip" data-action="tab" data-tab="reminders" aria-label="${due.length} fällige Fristen anzeigen">
+      ${icon('bell')}
+      <span class="due-items">${due.slice(0, 3).map((r) => `<span class="due-item"><span class="car-tag cc"${cc(r.car)}>${esc(carOf(r.car)?.short || '?')}</span>${esc(r.title)} ${dueLabel(r)}</span>`).join('')}${due.length > 3 ? `<span class="muted">+${due.length - 3}</span>` : ''}</span>
+      ${icon('right')}
+    </button>` : ''}`;
 }
 
 export function renderCalendar() {
@@ -93,7 +90,7 @@ export function renderCalendar() {
     const iso = `${year}-${pad(month + 1)}-${pad(d)}`;
     const chips = cars().map((c) => {
       const b = bookingFor(iso, c.id);
-      return b ? `<span class="chip pc"${pc(b.driver)}>${esc(c.short)} ${esc(personName(b.driver))}</span>` : '';
+      return b ? `<span class="chip pc"${pc(b.driver)} aria-hidden="true">${esc(c.short)}</span>` : '';
     }).join('');
     const inWeek = iso >= weekStart && iso <= weekEnd;
     cells.push(`<button class="day${iso === today ? ' today' : ''}${iso < today ? ' past' : ''}${inWeek ? ' in-week' : ''}" data-action="open-day" data-day="${iso}" aria-label="${esc(dayLabel(iso))}"${iso === today ? ' aria-current="date"' : ''}>
@@ -108,10 +105,10 @@ export function renderCalendar() {
   const main = prefs.calView === 'week' ? renderWeek(today) : `
     <section class="card cal" data-swipe="month">
       <div class="cal-head">
-        <button class="icon-btn" data-action="month" data-delta="-1" aria-label="Vorheriger Monat">‹</button>
+        <button class="icon-btn" data-action="month" data-delta="-1" aria-label="Vorheriger Monat">${icon('left')}</button>
         <h2>${title}</h2>
         ${isCurrentMonth ? '' : '<button class="btn-text" data-action="month-today">Heute</button>'}
-        <button class="icon-btn" data-action="month" data-delta="1" aria-label="Nächster Monat">›</button>
+        <button class="icon-btn" data-action="month" data-delta="1" aria-label="Nächster Monat">${icon('right')}</button>
       </div>
       ${viewToggle()}
       <div class="weekdays" aria-hidden="true">${['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map((w) => `<span>${w}</span>`).join('')}</div>
@@ -124,9 +121,9 @@ export function renderCalendar() {
     <section class="card">
       <h3>Woche übertragen</h3>
       <div class="week-pick">
-        <button class="icon-btn" data-action="week" data-delta="-7" aria-label="Vorherige Woche">‹</button>
+        <button class="icon-btn" data-action="week" data-delta="-7" aria-label="Vorherige Woche">${icon('left')}</button>
         <div class="week-label"><strong>KW ${weekNumber(weekStart)}</strong><span class="muted">${shortRange(weekStart)}</span></div>
-        <button class="icon-btn" data-action="week" data-delta="7" aria-label="Nächste Woche">›</button>
+        <button class="icon-btn" data-action="week" data-delta="7" aria-label="Nächste Woche">${icon('right')}</button>
       </div>
       <button class="btn block" data-action="copy-week">Nach KW ${weekNumber(addDays(weekStart, 7))} kopieren</button>
     </section>
@@ -138,9 +135,9 @@ export function renderDayDialog(iso) {
     <div class="overlay" data-action="close-day">
       <form class="dialog" id="day-form" data-day="${iso}" data-swipe="day" role="dialog" aria-modal="true" aria-labelledby="day-title">
         <div class="sheet-head">
-          <button class="icon-btn" type="button" data-action="day-step" data-delta="-1" aria-label="Vorheriger Tag">‹</button>
+          <button class="icon-btn" type="button" data-action="day-step" data-delta="-1" aria-label="Vorheriger Tag">${icon('left')}</button>
           <h3 id="day-title">${fmtDate(iso)}</h3>
-          <button class="icon-btn" type="button" data-action="day-step" data-delta="1" aria-label="Nächster Tag">›</button>
+          <button class="icon-btn" type="button" data-action="day-step" data-delta="1" aria-label="Nächster Tag">${icon('right')}</button>
         </div>
         ${cars().map((c) => {
           const cur = bookingFor(iso, c.id)?.driver || '';
