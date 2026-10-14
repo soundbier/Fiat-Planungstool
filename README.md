@@ -24,8 +24,23 @@ npm run dev
 
 1. <https://console.firebase.google.com> → **Projekt hinzufügen**.
 2. **Build → Firestore Database → Datenbank erstellen** (Produktionsmodus, Region z. B. `eur3`).
-3. **Projektübersicht → Web-App hinzufügen** (`</>`), Config kopieren und in `src/firebase-config.js` eintragen.
-   Die Werte sind nicht geheim; der Schutz erfolgt über die Security Rules.
+3. **Projektübersicht → Web-App hinzufügen** (`</>`) und die Config-Werte notieren.
+   Sie werden nicht im Repo gespeichert, sondern als Umgebungsvariablen gesetzt:
+
+   | Variable | Firebase-Config-Feld |
+   |---|---|
+   | `VITE_FIREBASE_API_KEY` | `apiKey` |
+   | `VITE_FIREBASE_AUTH_DOMAIN` | `authDomain` |
+   | `VITE_FIREBASE_PROJECT_ID` | `projectId` |
+   | `VITE_FIREBASE_STORAGE_BUCKET` | `storageBucket` |
+   | `VITE_FIREBASE_MESSAGING_SENDER_ID` | `messagingSenderId` |
+   | `VITE_FIREBASE_APP_ID` | `appId` |
+
+   Lokal: `.env.example` nach `.env.local` kopieren und ausfüllen (`.env.local` ist in `.gitignore`).
+
+   Hinweis: Vite baut diese Werte in das ausgelieferte JavaScript ein – sie sind im Browser sichtbar. Das ist bei
+   Firebase-Web-Configs normal; der eigentliche Schutz sind die Security Rules (und optional App Check bzw. eine
+   API-Key-Beschränkung auf eure Domain in der Google Cloud Console).
 
 ### 2. Anonymous Auth aktivieren
 
@@ -52,7 +67,10 @@ Die Abfrage sortiert nach `date`; dafür genügt der automatische Einzelfeld-Ind
    - Framework-Preset: *Keines* (oder Vite)
    - Build-Befehl: `npm run build`
    - Ausgabeverzeichnis: `dist`
-   - Optional Umgebungsvariable `NODE_VERSION` = `20`
+   - Umgebungsvariablen (**Einstellungen → Variablen und Secrets**, für *Production* und *Preview*):
+     alle sechs `VITE_FIREBASE_*`-Variablen aus Schritt 1, dazu optional `NODE_VERSION` = `20`.
+     Ob als „Text“ oder „Secret“ angelegt, ist egal – beide stehen beim Build zur Verfügung.
+     Nach dem Ändern von Variablen neu deployen, da sie zur Build-Zeit eingebaut werden.
 4. **Speichern und bereitstellen.** Jeder Push auf den Produktionsbranch deployt automatisch.
 
 ### 5. Autorisierte Domain in Firebase eintragen
