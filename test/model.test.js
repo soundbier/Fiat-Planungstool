@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  DEFAULT_SETUP, sanitizeSetup, slugId, validateEntry, validateReminder, sortEntries, lastOdometer, odometerIssues,
+  ALL, SHARED, DEFAULT_SETUP, sanitizeSetup, slugId, validateEntry, validateReminder, sortEntries, lastOdometer, odometerIssues,
   carStats, monthlyCosts, settlement, dueIn, dueReminders, intervalLabel, entryKey
 } from '../src/lib/model.js';
 
@@ -182,5 +182,18 @@ describe('Fristen', () => {
     const a = fuel('2026-01-01', 1, 2, 3);
     expect(entryKey({ ...a, id: 'x', createdAt: 1 })).toBe(entryKey(a));
     expect(entryKey({ ...a, type: undefined })).toBe(entryKey(a));
+  });
+});
+
+describe('Gemeinschaftskonto / Alle', () => {
+  it('teilt Konto-Zahlungen und Alle-Tage auf alle auf', () => {
+    const s = settlement({
+      setup: DEFAULT_SETUP, today: '2026-01-31', from: '2026-01-01',
+      entries: [{ car: 'fiat', date: '2026-01-05', cost: 100, createdBy: 'lukas', paidBy: SHARED, note: '' }],
+      bookings: [{ date: '2026-01-02', car: 'fiat', driver: ALL }, { date: '2026-01-03', car: 'fiat', driver: 'lukas' }]
+    });
+    expect(s.paid).toEqual({ lukas: 50, marie: 50 });
+    expect(s.share.lukas).toBeCloseTo(66.67);
+    expect(s.transfers).toHaveLength(1);
   });
 });

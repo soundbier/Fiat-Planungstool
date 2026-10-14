@@ -1,5 +1,5 @@
 import { setBookingsBatch } from '../firebase.js';
-import { dueReminders } from '../lib/model.js';
+import { ALL, dueReminders } from '../lib/model.js';
 import { addDays, esc, fmtDate, fmtDateLong, isoDate, mondayOf, pad, shortRange, weekNumber } from '../lib/util.js';
 import { render } from '../render.js';
 import { carName, carOf, cars, cc, pc, people, personName, prefs, state } from '../state.js';
@@ -144,8 +144,8 @@ export function renderDayDialog(iso) {
         </div>
         ${cars().map((c) => {
           const cur = bookingFor(iso, c.id)?.driver || '';
-          const opts = [...people().map((p) => [p.id, p.name]), ['', 'frei']];
-          if (cur && !people().some((p) => p.id === cur)) opts.unshift([cur, cur]);
+          const opts = [...people().map((p) => [p.id, p.name]), [ALL, personName(ALL)], ['', 'frei']];
+          if (cur && cur !== ALL && !people().some((p) => p.id === cur)) opts.unshift([cur, cur]);
           return `<fieldset>
             <legend>${esc(c.name)}</legend>
             <div class="seg">
@@ -163,7 +163,7 @@ export function renderDayDialog(iso) {
 
 export function updateDayWarning(form) {
   const f = new FormData(form);
-  const drivers = cars().map((c) => f.get(c.id)).filter(Boolean);
+  const drivers = cars().map((c) => f.get(c.id)).filter((d) => d && d !== ALL);
   const dup = drivers.find((d, i) => drivers.indexOf(d) !== i);
   const warn = form.querySelector('#day-warn');
   if (dup) {

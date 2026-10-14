@@ -2,7 +2,7 @@
 // CSV-Export/-Import und JSON-Backup (reine Funktionen).
 import { pad } from './util.js';
 import {
-  TYPES, MAX_ITEMS, entryType, payerOf, findCarIn, sanitizeSetup, sortEntries, validateEntry, validateReminder
+  ALL, SPECIAL_NAMES, TYPES, MAX_ITEMS, entryType, payerOf, findCarIn, sanitizeSetup, sortEntries, validateEntry, validateReminder
 } from './model.js';
 
 /** @typedef {import('./model.js').Setup} Setup */
@@ -20,7 +20,7 @@ export const CSV_HEAD = ['Datum', 'Auto', 'Art', 'Kilometerstand', 'Menge', 'Ein
  */
 export function entriesToCsv(entries, setup) {
   const de = (/** @type {unknown} */ n) => (n == null ? '' : String(n).replace('.', ','));
-  const person = (/** @type {string} */ id) => setup.people.find((p) => p.id === id)?.name || id || '';
+  const person = (/** @type {string} */ id) => setup.people.find((p) => p.id === id)?.name || SPECIAL_NAMES[id] || id || '';
   /** @type {unknown[][]} */
   const rows = [CSV_HEAD];
   for (const e of sortEntries(entries)) {
@@ -74,7 +74,8 @@ function findCar(setup, v) {
 /** @param {Setup} setup @param {unknown} v */
 function findPerson(setup, v) {
   const t = String(v || '').trim().toLowerCase();
-  return setup.people.find((p) => p.id === t || p.name.toLowerCase() === t)?.id || null;
+  return setup.people.find((p) => p.id === t || p.name.toLowerCase() === t)?.id
+    || Object.keys(SPECIAL_NAMES).find((k) => k === t || SPECIAL_NAMES[k].toLowerCase() === t) || null;
 }
 /** @param {unknown} v */
 function findType(v) {
@@ -146,7 +147,7 @@ export function fromBackup(json, current, me) {
     if (res.data) entries.push(res.data); else skipped++;
   }
   for (const b of Array.isArray(json.bookings) ? json.bookings : []) {
-    if (/^\d{4}-\d{2}-\d{2}$/.test(b?.date) && findCarIn(setup, b.car) && setup.people.some((p) => p.id === b.driver)) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(b?.date) && findCarIn(setup, b.car) && (b.driver === ALL || setup.people.some((p) => p.id === b.driver))) {
       bookings.push({ date: b.date, car: b.car, driver: b.driver });
     } else skipped++;
   }

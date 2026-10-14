@@ -24,6 +24,12 @@ export const MAX_ITEMS = 10;
 export const DUE_SOON_DAYS = 30;
 /** Ab dieser Differenz zum vorherigen Eintrag wird beim Kilometerstand nachgefragt. */
 export const MAX_KM_JUMP = 5000;
+/** Zahler „Gemeinschaftskonto“ – zählt bei der Abrechnung für alle anteilig. */
+export const SHARED = 'konto';
+/** Fahrer „Alle“ – Tag zählt bei der Abrechnung für jede Person. */
+export const ALL = 'alle';
+/** @type {Record<string, string>} */
+export const SPECIAL_NAMES = { [SHARED]: 'Gemeinschaftskonto', [ALL]: 'Alle' };
 
 /** @type {Setup} */
 export const DEFAULT_SETUP = {
@@ -60,6 +66,7 @@ export function findCarIn(setup, id) { return setup.cars.find((c) => c.id === id
 
 /** URL-/CSS-sichere ID aus einem Namen, eindeutig gegenüber `taken`. @param {string} name @param {string[]} taken */
 export function slugId(name, taken) {
+  taken = [...taken, SHARED, ALL];
   const base = String(name).toLowerCase()
     .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
     .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '').slice(0, 16) || 'x';
@@ -276,7 +283,10 @@ export function settlement({ setup, entries, bookings, from, today }) {
     if (!cost) continue;
     const days = zero();
     for (const b of bookings) {
-      if (b.car === c.id && b.date >= from && b.date <= today && b.driver in days) days[b.driver]++;
+      if (b.car === c.id && b.date >= from && b.date <= today) {
+        if (b.driver === ALL) for (const i of ids) days[i]++;
+        else if (b.driver in days) days[b.driver]++;
+      }
     }
     const total = Object.values(days).reduce((a, b) => a + b, 0);
     for (const i of ids) share[i] += total ? cost * days[i] / total : cost / ids.length;

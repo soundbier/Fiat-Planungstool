@@ -1,5 +1,5 @@
 import { addItem } from '../firebase.js';
-import { TYPES, entryType, lastOdometer, odometerIssues, payerOf, sortEntries, validateEntry } from '../lib/model.js';
+import { SHARED, TYPES, entryType, lastOdometer, odometerIssues, payerOf, sortEntries, validateEntry } from '../lib/model.js';
 import { esc, eur, fmtDate, isoDate, monthLabel, num, parseNum } from '../lib/util.js';
 import { render } from '../render.js';
 import { carName, carOf, cars, cc, isCombustion, pc, people, personName, state, typeLabel, unit } from '../state.js';
@@ -61,7 +61,7 @@ export function renderEntrySheet() {
         <fieldset>
           <legend>Bezahlt von</legend>
           <div class="seg">
-            ${people().map((p) => `<label class="seg-opt pc"${pc(p.id)}><input type="radio" name="paidBy" value="${p.id}" ${p.id === state.name ? 'checked' : ''}><span>${esc(p.name)}</span></label>`).join('')}
+            ${[...people(), { id: SHARED, name: personName(SHARED) }].map((p) => `<label class="seg-opt pc"${pc(p.id)}><input type="radio" name="paidBy" value="${p.id}" ${p.id === state.name ? 'checked' : ''}><span>${esc(p.name)}</span></label>`).join('')}
           </div>
         </fieldset>
         <label><span>Notiz</span><input name="note" maxlength="300" placeholder="optional"></label>

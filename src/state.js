@@ -1,4 +1,4 @@
-import { DEFAULT_SETUP, ID_RE, TYPES } from './lib/model.js';
+import { ALL, DEFAULT_SETUP, ID_RE, SHARED, SPECIAL_NAMES, TYPES } from './lib/model.js';
 import { firstOfMonth, isoDate, mondayOf } from './lib/util.js';
 
 export const CAR_COLORS = ['#1f7a6d', '#c2581b', '#7a4bb0', '#3b7d2a', '#b0477f', '#2c5d8f', '#8a6d1d', '#4a4a48'];
@@ -76,6 +76,8 @@ export function applyPrefs() {
 export function applyColors() {
   const st = document.documentElement.style;
   people().forEach((p, i) => st.setProperty(`--p-${p.id}`, prefs.colors[p.id] || SWATCHES[i % SWATCHES.length]));
+  st.setProperty(`--p-${SHARED}`, '#6b6b66');
+  st.setProperty(`--p-${ALL}`, '#6b6b66');
   cars().forEach((c, i) => st.setProperty(`--car-${c.id}`, CAR_COLORS[i % CAR_COLORS.length]));
 }
 
@@ -91,7 +93,7 @@ export function people() { return state.setup.people; }
 
 export function cars() { return state.setup.cars; }
 
-export function personName(id) { return people().find((p) => p.id === id)?.name || id || ''; }
+export function personName(id) { return people().find((p) => p.id === id)?.name || SPECIAL_NAMES[id] || id || ''; }
 
 export function carOf(id) { return cars().find((c) => c.id === id) || null; }
 
