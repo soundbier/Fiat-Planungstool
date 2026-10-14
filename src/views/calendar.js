@@ -61,12 +61,10 @@ export function renderOverview() {
   const days = [[today, 'Heute'], [addDays(today, 1), 'Morgen']];
   const due = dueReminders(state.reminders, today);
   return `
-    <section class="overview">
-      ${days.map(([iso, label]) => `
-        <button class="card ov-day" data-action="open-day" data-day="${iso}">
-          <span class="ov-label">${label} <span class="ov-date">${esc(fmtDate(iso))}</span></span>
-          ${cars().map((c) => `<span class="ov-slot"><span class="ov-car">${esc(c.name)}</span>${driverChip(iso, c.id)}</span>`).join('')}
-        </button>`).join('')}
+    <section class="card overview" aria-label="Heute und morgen">
+      <span></span>
+      ${days.map(([iso, label]) => `<button class="ov-head" data-action="open-day" data-day="${iso}" aria-label="${esc(dayLabel(iso))}">${label}<span class="ov-date">${esc(fmtDate(iso).replace(/\d{4}$/, ''))}</span></button>`).join('')}
+      ${cars().map((c) => `<span class="ov-car">${esc(c.name)}</span>${days.map(([iso]) => `<button class="ov-cell" data-action="open-day" data-day="${iso}" tabindex="-1" aria-hidden="true">${driverChip(iso, c.id)}</button>`).join('')}`).join('')}
     </section>
     ${due.length ? `<button class="due-strip" data-action="tab" data-tab="reminders" aria-label="${due.length} fällige Fristen anzeigen">
       ${icon('bell')}
