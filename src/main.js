@@ -1,8 +1,13 @@
 import './style.css';
 import qrcode from 'qrcode-generator';
-import { ensureAuth, subscribe, subscribeBookings, setBookingsBatch, addItem, updateItem, deleteItem } from './firebase.js';
+import { ensureAuth, subscribeEntries, subscribeBookings, setBookingsBatch, addItem, deleteItem } from './firebase.js';
 
 const PEOPLE = ['Lukas', 'Marie'];
+const DRIVERS = Object.fromEntries(PEOPLE.map((p) => [p.toLowerCase(), p]));
+const CARS = [
+  { id: 'fiat', name: 'Fiat 500e', short: 'F' },
+  { id: 'citroen', name: 'Citroën', short: 'C' }
+];
 const LS_CODE = 'autoplaner.household';
 const LS_NAME = 'autoplaner.name';
 const CODE_RE = /^[A-Za-z0-9]{20,64}$/;
@@ -108,7 +113,7 @@ function startSync() {
   stopSync();
   const onErr = (e) => { console.error(e); state.error = 'Synchronisation fehlgeschlagen: ' + e.message; render(); };
   unsubs.push(subscribeBookings(state.code, (d) => { state.bookings = d; render(); }, onErr));
-  unsubs.push(subscribe(state.code, 'entries', (d) => { state.entries = d; render(); }, onErr));
+  unsubs.push(subscribeEntries(state.code, (d) => { state.entries = d; render(); }, onErr));
 }
 function stopSync() {
   unsubs.forEach((u) => u());
@@ -140,14 +145,14 @@ function renderSetup() {
   if (step === 'start') {
     body = `
       <h1>Autoplaner</h1>
-      <p class="muted">Plant gemeinsam euer Auto – ohne Account.</p>
+      <p class="muted">Wer fährt wann welches Auto – und was es kostet.</p>
       <button class="btn primary block" data-action="create">Neuen Haushalt erstellen</button>
       <button class="btn block" data-action="goto-join">Haushalt beitreten</button>`;
   } else if (step === 'created') {
     const link = shareLink(state.newCode);
     body = `
       <h1>Haushalt erstellt</h1>
-      <p class="muted">Teile diesen Code oder QR-Code mit deinem Partner. Wer den Code kennt, hat Zugriff.</p>
+      <p class="muted">Code oder QR-Code an die zweite Person weitergeben. Wer den Code hat, hat Zugriff.</p>
       <div class="code-box">${esc(state.newCode)}</div>
       <button class="btn block" data-action="copy" data-text="${esc(state.newCode)}">Code kopieren</button>
       <button class="btn block" data-action="copy" data-text="${esc(link)}">Link kopieren</button>
@@ -173,12 +178,6 @@ function renderSetup() {
 }
 
 /* ---------- Calendar ---------- */
-
-const CARS = [
-  { id: 'fiat', name: 'Fiat 500e', short: 'F' },
-  { id: 'citroen', name: 'Citroën', short: 'C' }
-];
-const DRIVERS = { lukas: 'Lukas', marie: 'Marie' };
 
 function bookingFor(iso, car) {
   return state.bookings.find((b) => b.date === iso && b.car === car) || null;
@@ -227,14 +226,14 @@ function renderCalendar() {
       <div class="weekdays">${['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map((w) => `<span>${w}</span>`).join('')}</div>
       <div class="grid">${cells.join('')}</div>
       <div class="legend">
-        <span><i class="dot lukas"></i>Lukas</span><span><i class="dot marie"></i>Marie</span>
+        ${PEOPLE.map((p) => `<span><i class="dot ${p.toLowerCase()}"></i>${p}</span>`).join('')}
         <span>F = Fiat 500e · C = Citroën</span>
       </div>
     </section>
     <section class="card">
-      <h3>Woche ${fmtDate(weekStart)} – ${fmtDate(weekEnd)}</h3>
-      <button class="btn block" data-action="copy-week">Woche kopieren → Folgewoche</button>
-      <p class="muted small">Tag antippen zum Bearbeiten. Die markierte Woche folgt dem zuletzt geöffneten Tag.</p>
+      <h3>Woche vom ${fmtDate(weekStart)}</h3>
+      <button class="btn block" data-action="copy-week">Auf nächste Woche übertragen</button>
+      <p class="muted small">Markiert ist die Woche des zuletzt geöffneten Tags.</p>
     </section>
     ${state.dayDialog ? renderDayDialog(state.dayDialog) : ''}`;
 }
@@ -266,7 +265,7 @@ function updateDayWarning(form) {
   const a = f.get('fiat'), b = f.get('citroen');
   const warn = form.querySelector('#day-warn');
   if (a && a === b) {
-    warn.textContent = `⚠️ ${DRIVERS[a]} ist beiden Autos zugewiesen.`;
+    warn.textContent = `${DRIVERS[a]} ist für beide Autos eingetragen.`;
     warn.hidden = false;
   } else warn.hidden = true;
 }
@@ -327,10 +326,10 @@ function renderEntries() {
   const list = sortEntries(state.entries.filter((e) => e.car === 'fiat' || e.car === 'citroen'));
   return `
     <section class="card">
-      <h3>Tanken / Laden erfassen</h3>
+      <h3>Neuer Eintrag</h3>
       <form id="entry-form">
         <div class="seg">
-          ${CARS.map((c) => `<label class="seg-opt"><input type="radio" name="car" value="${c.id}" ${c.id === car ? 'checked' : ''}><span>${c.id === 'fiat' ? '⚡' : '⛽'} ${c.name}</span></label>`).join('')}
+          ${CARS.map((c) => `<label class="seg-opt"><input type="radio" name="car" value="${c.id}" ${c.id === car ? 'checked' : ''}><span>${c.name}</span></label>`).join('')}
         </div>
         <div class="row">
           <label>Datum<input type="date" name="date" value="${isoDate(new Date())}" required></label>
@@ -358,7 +357,7 @@ function entryItem(e) {
   const per = e.amount > 0 ? ` · ${num.format(e.cost / e.amount)} €/${unit}` : '';
   const who = DRIVERS[e.createdBy] || '';
   return `<li class="item">
-    <span class="type">${e.car === 'fiat' ? '⚡' : '⛽'}</span>
+    <span class="car-tag ${e.car}">${CARS.find((c) => c.id === e.car)?.short || ''}</span>
     <div class="grow">
       <strong>${eur.format(e.cost)}</strong> <span class="muted">${num.format(e.amount)} ${unit}${per}</span>
       <div class="note">${esc(carName(e.car))} · ${fmtDate(e.date)} · ${num.format(e.odometer)} km${e.car === 'citroen' ? (e.full ? ' · voll' : ' · teilweise') : ''}${who ? ` · <i class="dot ${e.createdBy}"></i>${who}` : ''}${e.note ? ` · ${esc(e.note)}` : ''}</div>
@@ -471,7 +470,7 @@ function barChart(months, car) {
     const y = h - bottom - bh;
     return `<g>
       <title>${esc(m.label)}: ${eur.format(m.value)}</title>
-      <rect x="${x}" y="${y}" width="${barW}" height="${Math.max(bh, m.value > 0 ? 1 : 0)}" rx="4" class="bar-${car}"/>
+      <rect x="${x}" y="${y}" width="${barW}" height="${Math.max(bh, m.value > 0 ? 1 : 0)}" rx="2" class="bar-${car}"/>
       ${m.value > 0 ? `<text x="${x + barW / 2}" y="${y - 4}" class="bar-val">${Math.round(m.value)}</text>` : ''}
       <text x="${x + barW / 2}" y="${h - 6}" class="bar-lbl">${esc(m.label)}</text>
     </g>`;
@@ -494,7 +493,7 @@ function renderStats() {
       const fmt = (v, suffix) => (v == null ? '–' : `${num.format(v)} ${suffix}`);
       return `
         <section class="card car-card ${c.id}">
-          <h3>${c.id === 'fiat' ? '⚡' : '⛽'} ${c.name}</h3>
+          <h3>${c.name}</h3>
           <div class="stat-big">${eur.format(s.totalCost)}<small>Gesamtkosten · ${s.count} Einträge</small></div>
           <ul class="kv">
             <li><span>Gefahrene km</span><span>${num.format(s.km)} km</span></li>
@@ -502,8 +501,8 @@ function renderStats() {
             <li><span>Ø Kosten</span><span>${s.costPer100 == null ? '–' : `${eur.format(s.costPer100)} /100 km`}</span></li>
             <li><span>Ø Preis</span><span>${s.avgPrice == null ? '–' : `${num.format(s.avgPrice)} €/${unit}`}</span></li>
           </ul>
-          ${c.id === 'citroen' ? '<p class="hint">Der Verbrauch ist beim Citroën nur aussagekräftig, wenn jeweils vollgetankt wurde (Volltank-Einträge).</p>' : ''}
-          ${s.count === 1 ? '<p class="muted small">Für Verbrauch und km werden mindestens zwei Einträge benötigt.</p>' : ''}
+          ${c.id === 'citroen' ? '<p class="hint">Verbrauch stimmt nur, wenn jedes Mal vollgetankt wurde.</p>' : ''}
+          ${s.count === 1 ? '<p class="muted small">Verbrauch und km ab zwei Einträgen.</p>' : ''}
           <h4>Kosten pro Monat</h4>
           ${barChart(s.months, c.id)}
         </section>`;
@@ -543,11 +542,21 @@ function renderSettings() {
 /* ---------- Main render ---------- */
 
 const TABS = [
-  { id: 'calendar', label: 'Kalender', icon: '📅' },
-  { id: 'entries', label: 'Tanken/Laden', icon: '⛽' },
-  { id: 'stats', label: 'Auswertung', icon: '📊' },
-  { id: 'settings', label: 'Einstellungen', icon: '⚙️' }
+  { id: 'calendar', label: 'Kalender', short: 'Kalender', icon: 'calendar' },
+  { id: 'entries', label: 'Tanken & Laden', short: 'Tanken', icon: 'fuel' },
+  { id: 'stats', label: 'Auswertung', short: 'Auswertung', icon: 'chart' },
+  { id: 'settings', label: 'Einstellungen', short: 'Einstellungen', icon: 'gear' }
 ];
+
+const ICONS = {
+  calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  fuel: '<path d="M4 21V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v16M3 21h13M4 11h11"/><path d="M15 8h2a2 2 0 0 1 2 2v7a1.5 1.5 0 0 0 3 0V9l-3-3"/>',
+  chart: '<path d="M4 20h16M7 16v-5M12 16V7M17 16v-8"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/>'
+};
+function icon(name) {
+  return `<svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>`;
+}
 
 function render() {
   if (state.setupStep) return renderSetup();
@@ -561,14 +570,14 @@ function render() {
   const dayDraft = dayForm && dayForm.dataset.day === state.dayDialog ? Object.fromEntries(new FormData(dayForm)) : null;
   app.innerHTML = `
     <header class="topbar">
-      <span>Autoplaner</span>
+      <span>${esc(TABS.find((t) => t.id === state.tab).label)}</span>
       <span class="me ${state.name.toLowerCase()}">${esc(state.name)}</span>
     </header>
     ${state.error ? `<div class="banner">${esc(state.error)}</div>` : ''}
     <main class="content">${views[state.tab]()}</main>
     <nav class="tabbar">
       ${TABS.map((t) => `<button class="tab ${t.id === state.tab ? 'active' : ''}" data-action="tab" data-tab="${t.id}">
-        <span class="tab-icon">${t.icon}</span><span>${t.label}</span></button>`).join('')}
+        ${icon(t.icon)}<span>${t.short}</span></button>`).join('')}
     </nav>`;
   if (dayDraft) {
     const form = document.getElementById('day-form');
@@ -585,7 +594,7 @@ function render() {
 
 /* ---------- Events ---------- */
 
-app.addEventListener('click', async (ev) => {
+app.addEventListener('click', (ev) => {
   const el = ev.target.closest('[data-action]');
   if (!el) return;
   const { action } = el.dataset;
