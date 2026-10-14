@@ -1,6 +1,8 @@
 # Autoplaner
 
-PWA für Lukas und Marie zum gemeinsamen Planen des Autos: Kalender für Fiat 500e und Citroën, Tanken/Laden erfassen (Fiat 500e in kWh, Citroën in Litern), Auswertung der Kosten.
+PWA zum gemeinsamen Planen von Autos im Haushalt: Kalender, Kosten erfassen (Tanken/Laden, Werkstatt, Parken, Maut, Versicherung, Steuer …),
+Fristen (HU/TÜV, Service, Reifenwechsel …), Auswertung mit Kostenaufteilung und JSON-/CSV-Backup.
+Personen und Autos (Elektro in kWh, Verbrenner in Litern) sind in den Einstellungen frei konfigurierbar (Standard: Lukas, Marie, Fiat 500e, Citroën).
 Vite + Vanilla JS + Firebase Firestore (offlinefähig via `persistentLocalCache`). Kein Account nötig – Zugriff über einen geheimen Haushaltscode.
 
 ## Funktionsweise
@@ -9,7 +11,9 @@ Vite + Vanilla JS + Firebase Firestore (offlinefähig via `persistentLocalCache`
 - Erster Start: **Neuen Haushalt erstellen** (zufälliger 24-stelliger Code via `crypto.getRandomValues`) – danach erscheint
   sofort eine **Einladung** (QR-Code/Link `https://deine-domain/#h=CODE&i=TOKEN`) für die zweite Person.
 - Danach **Wer bist du?** – Lukas oder Marie. Code und Name liegen in `localStorage`.
-- Daten: `households/{code}/bookings`, `/entries`, `/members/{uid}`, `/invites/{token}`, `/meta/config`.
+- Daten: `households/{code}/bookings`, `/entries`, `/reminders`, `/members/{uid}`, `/invites/{token}`, `/meta/config`, `/meta/setup` (Personen & Autos).
+- **Abrechnung:** Kosten je Auto werden nach gebuchten Kalendertagen (bis heute) auf die Personen verteilt und mit „Bezahlt von“ verrechnet.
+- **Nach dem Update** die neuen `firestore.rules` deployen – sonst schlagen Fristen, neue Kostenarten und Stammdaten fehl.
 
 ### Sicherheitsmodell (ohne Login)
 

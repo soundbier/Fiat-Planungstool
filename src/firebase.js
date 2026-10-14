@@ -2,7 +2,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-  collection, doc, addDoc, deleteDoc, getDoc, getDocs, setDoc, writeBatch, onSnapshot, query, orderBy,
+  collection, doc, addDoc, deleteDoc, getDoc, getDocs, setDoc, updateDoc, writeBatch, onSnapshot, query, orderBy,
   serverTimestamp, Timestamp
 } from 'firebase/firestore';
 import { firebaseConfig, missingConfigKeys } from './firebase-config.js';
@@ -41,6 +41,19 @@ export const addItem = (code, name, data) =>
   addDoc(col(code, name), { ...data, createdAt: serverTimestamp() });
 export const deleteItem = (code, name, id) =>
   deleteDoc(doc(db, 'households', code, name, id));
+export const updateItem = (code, name, id, data) =>
+  updateDoc(doc(db, 'households', code, name, id), data);
+
+export function subscribeReminders(code, cb, onError) {
+  return onSnapshot(col(code, 'reminders'),
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))), onError);
+}
+
+const setupRef = (code) => doc(db, 'households', code, 'meta', 'setup');
+export function subscribeSetup(code, cb, onError) {
+  return onSnapshot(setupRef(code), (snap) => cb(snap.exists() ? snap.data() : null), onError);
+}
+export const saveSetup = (code, setup) => setDoc(setupRef(code), setup);
 
 export function subscribeBookings(code, cb, onError) {
   return onSnapshot(col(code, 'bookings'), { includeMetadataChanges: true },
@@ -109,6 +122,16 @@ export async function revokeInvites(code) {
   return snap.size;
 }
 
+// Import: bookings [{date,car,driver}], entries/reminders ohne id/createdAt
+export function importData(code, { bookings = [], entries = [], reminders = [] }, updatedBy) {
+  return commitChunks([
+    ...bookings.map(({ date, car, driver }) => (b) => b.set(bookingRef(code, date, car),
+      { date, car, driver, updatedBy, updatedAt: serverTimestamp() })),
+    ...entries.map((d) => (b) => b.set(doc(col(code, 'entries')), { ...d, createdAt: serverTimestamp() })),
+    ...reminders.map((d) => (b) => b.set(doc(col(code, 'reminders')), { ...d, createdAt: serverTimestamp() }))
+  ]);
+}
+
 async function commitChunks(ops, size = 400) {
   for (let i = 0; i < ops.length; i += size) {
     const batch = writeBatch(db);
@@ -119,22 +142,27 @@ async function commitChunks(ops, size = 400) {
 
 // Kopiert alle Daten in einen neuen Haushalt, sperrt den alten und entfernt dort Daten und Geräte.
 export async function rotateHousehold(oldCode, newCode, uid, device) {
-  const [cfg, bookings, entries, invites, members] = await Promise.all([
+  const [cfg, setup, reminders, bookings, entries, invites, members] = await Promise.all([
     getDoc(configRef(oldCode)),
+    getDoc(setupRef(oldCode)),
+    getDocs(col(oldCode, 'reminders')),
     getDocs(col(oldCode, 'bookings')),
     getDocs(col(oldCode, 'entries')),
     getDocs(col(oldCode, 'invites')),
     getDocs(col(oldCode, 'members'))
   ]);
   await createHousehold(newCode, uid, device, cfg.exists() ? cfg.data().locked : true);
+  if (setup.exists()) await saveSetup(newCode, setup.data());
   await commitChunks([
     ...bookings.docs.map((d) => (b) => b.set(doc(db, 'households', newCode, 'bookings', d.id),
       { ...d.data(), updatedAt: serverTimestamp() })),
     ...entries.docs.map((d) => (b) => b.set(doc(col(newCode, 'entries')),
+      { ...d.data(), createdAt: serverTimestamp() })),
+    ...reminders.docs.map((d) => (b) => b.set(doc(col(newCode, 'reminders')),
       { ...d.data(), createdAt: serverTimestamp() }))
   ]);
   await setDoc(configRef(oldCode), { locked: true });
-  await commitChunks([...bookings.docs, ...entries.docs, ...invites.docs].map((d) => (b) => b.delete(d.ref)));
+  await commitChunks([...bookings.docs, ...entries.docs, ...reminders.docs, ...invites.docs].map((d) => (b) => b.delete(d.ref)));
   const others = members.docs.filter((d) => d.id !== uid);
   await commitChunks(others.map((d) => (b) => b.delete(d.ref)));
   await removeMember(oldCode, uid);

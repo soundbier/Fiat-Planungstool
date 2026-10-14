@@ -37,33 +37,55 @@ service cloud.firestore {
         && d.joinedAt == request.time;
     }
 
-    function validPerson(p) {
-      return p in ['lukas', 'marie'];
+    // IDs von Personen/Autos (frei konfigurierbar in meta/setup)
+    function validId(x) {
+      return x is string && x.matches('^[a-z0-9]{1,20}$');
+    }
+
+    function validSetup(d) {
+      return d.keys().hasOnly(['people', 'cars']) && d.keys().hasAll(['people', 'cars'])
+        && d.people is list && d.people.size() >= 1 && d.people.size() <= 10
+        && d.cars is list && d.cars.size() >= 1 && d.cars.size() <= 10;
     }
 
     function validBooking(d, id) {
       return d.keys().hasOnly(['date', 'car', 'driver', 'updatedBy', 'updatedAt'])
         && d.keys().hasAll(['date', 'car', 'driver', 'updatedBy', 'updatedAt'])
         && validDate(d.date)
-        && d.car in ['fiat', 'citroen']
-        && validPerson(d.driver)
-        && validPerson(d.updatedBy)
+        && validId(d.car)
+        && validId(d.driver)
+        && validId(d.updatedBy)
         && d.updatedAt == request.time
         && id == d.date + '_' + d.car;
     }
 
+    // type fehlt bei alten Einträgen (= fuel). Tanken/Laden braucht Menge und Kilometerstand.
     function validEntry(d) {
-      return d.keys().hasOnly(['car', 'date', 'odometer', 'amount', 'cost', 'full', 'note', 'createdBy', 'createdAt'])
-        && d.keys().hasAll(['car', 'date', 'odometer', 'amount', 'cost', 'full', 'note', 'createdBy', 'createdAt'])
-        && d.car in ['fiat', 'citroen']
+      return d.keys().hasOnly(['car', 'type', 'date', 'odometer', 'amount', 'cost', 'full', 'note', 'createdBy', 'paidBy', 'createdAt'])
+        && d.keys().hasAll(['car', 'date', 'cost', 'note', 'createdBy', 'createdAt'])
+        && validId(d.car)
+        && d.get('type', 'fuel') in ['fuel', 'service', 'parking', 'toll', 'insurance', 'tax', 'other']
         && validDate(d.date)
-        && d.odometer is int && d.odometer >= 0 && d.odometer < 10000000
-        && d.amount is number && d.amount > 0 && d.amount < 10000
+        && (!('odometer' in d) || (d.odometer is int && d.odometer >= 0 && d.odometer < 10000000))
+        && (!('amount' in d) || (d.amount is number && d.amount > 0 && d.amount < 10000))
+        && (d.get('type', 'fuel') != 'fuel' || ('amount' in d && 'odometer' in d))
+        && (!('full' in d) || d.full is bool)
         && d.cost is number && d.cost >= 0 && d.cost < 100000
-        && d.full is bool && (d.car == 'citroen' || d.full == false)
         && d.note is string && d.note.size() <= 300
-        && validPerson(d.createdBy)
+        && validId(d.createdBy)
+        && (!('paidBy' in d) || validId(d.paidBy))
         && d.createdAt == request.time;
+    }
+
+    function validReminder(d) {
+      return d.keys().hasOnly(['car', 'title', 'due', 'intervalMonths', 'note', 'createdBy', 'createdAt'])
+        && d.keys().hasAll(['car', 'title', 'due', 'intervalMonths', 'note', 'createdBy', 'createdAt'])
+        && validId(d.car)
+        && d.title is string && d.title.size() >= 1 && d.title.size() <= 80
+        && validDate(d.due)
+        && d.intervalMonths is int && d.intervalMonths >= 0 && d.intervalMonths <= 120
+        && d.note is string && d.note.size() <= 300
+        && validId(d.createdBy);
     }
 
     // Kein Zugriff auf households selbst – insbesondere kein list.
@@ -84,9 +106,11 @@ service cloud.firestore {
 
       match /meta/{id} {
         allow get: if isMember(code);
-        allow create, update: if isMember(code) && id == 'config'
-          && request.resource.data.keys().hasOnly(['locked'])
-          && request.resource.data.locked is bool;
+        allow create, update: if isMember(code) && (
+          (id == 'config'
+            && request.resource.data.keys().hasOnly(['locked'])
+            && request.resource.data.locked is bool)
+          || (id == 'setup' && validSetup(request.resource.data)));
         allow delete: if false;
       }
 
@@ -108,6 +132,15 @@ service cloud.firestore {
         allow get, list: if isMember(code);
         allow create, update: if isMember(code)
           && validBooking(request.resource.data, id);
+        allow delete: if isMember(code);
+      }
+
+      match /reminders/{id} {
+        allow get, list: if isMember(code);
+        allow create: if isMember(code) && validReminder(request.resource.data)
+          && request.resource.data.createdAt == request.time;
+        allow update: if isMember(code) && validReminder(request.resource.data)
+          && request.resource.data.createdAt == resource.data.createdAt;
         allow delete: if isMember(code);
       }
 
