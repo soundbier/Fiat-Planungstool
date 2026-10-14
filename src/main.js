@@ -26,6 +26,8 @@ const state = {
   statsPeriod: 'year',
   entryCar: 'fiat',
   dayDialog: null,
+  copyWeek: null,
+  entrySheet: false,
   setupStep: null,
   newCode: null,
   error: null
@@ -76,12 +78,22 @@ function qrSvg(text) {
   return qr.createSvgTag({ cellSize: 6, margin: 2, scalable: true });
 }
 
-function toast(msg) {
+function toast(msg, action) {
+  document.querySelectorAll('.toast').forEach((t) => t.remove());
   const el = document.createElement('div');
-  el.className = 'toast';
-  el.textContent = msg;
+  el.className = 'toast' + (action ? ' has-action' : '');
+  el.setAttribute('role', 'status');
+  const text = document.createElement('span');
+  text.textContent = msg;
+  el.appendChild(text);
+  if (action) {
+    const btn = document.createElement('button');
+    btn.textContent = action.label;
+    btn.addEventListener('click', () => { el.remove(); action.run(); });
+    el.appendChild(btn);
+  }
   document.body.appendChild(el);
-  setTimeout(() => el.remove(), 2200);
+  setTimeout(() => el.remove(), action ? 5000 : 2200);
 }
 
 async function copyText(text) {
@@ -194,14 +206,49 @@ function mondayOf(iso) {
   return addDays(iso, -((dt.getDay() + 6) % 7));
 }
 
+function weekNumber(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + 4 - (dt.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(dt.getUTCFullYear(), 0, 1));
+  return Math.ceil(((dt - yearStart) / 86400000 + 1) / 7);
+}
+
+function shortRange(start) {
+  const end = addDays(start, 6);
+  const f = (iso) => { const [, m, d] = iso.split('-'); return `${d}.${m}.`; };
+  return `${f(start)} – ${f(end)}`;
+}
+
+function driverChip(iso, car) {
+  const b = bookingFor(iso, car);
+  return b
+    ? `<span class="pill ${b.driver}">${esc(DRIVERS[b.driver] || '')}</span>`
+    : '<span class="pill free">frei</span>';
+}
+
+function renderOverview() {
+  const today = isoDate(new Date());
+  const days = [[today, 'Heute'], [addDays(today, 1), 'Morgen']];
+  return `
+    <section class="overview">
+      ${days.map(([iso, label]) => `
+        <button class="card ov-day" data-action="open-day" data-day="${iso}">
+          <span class="ov-label">${label}</span>
+          ${CARS.map((c) => `<span class="ov-row"><span class="ov-car">${c.name}</span>${driverChip(iso, c.id)}</span>`).join('')}
+        </button>`).join('')}
+    </section>`;
+}
+
 function renderCalendar() {
   const m = state.month;
   const year = m.getFullYear(), month = m.getMonth();
   const startOffset = (new Date(year, month, 1).getDay() + 6) % 7;
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const today = isoDate(new Date());
-  const weekStart = mondayOf(state.selectedDay);
+  const weekStart = state.copyWeek || mondayOf(today);
   const weekEnd = addDays(weekStart, 6);
+  const isCurrentMonth = year === new Date().getFullYear() && month === new Date().getMonth();
   const cells = [];
   for (let i = 0; i < startOffset; i++) cells.push('<div class="day empty"></div>');
   for (let d = 1; d <= daysInMonth; d++) {
@@ -211,29 +258,35 @@ function renderCalendar() {
       return b ? `<span class="chip ${b.driver}">${c.short} ${esc(DRIVERS[b.driver] || '')}</span>` : '';
     }).join('');
     const inWeek = iso >= weekStart && iso <= weekEnd;
-    cells.push(`<button class="day${iso === today ? ' today' : ''}${inWeek ? ' in-week' : ''}" data-action="open-day" data-day="${iso}">
+    cells.push(`<button class="day${iso === today ? ' today' : ''}${iso < today ? ' past' : ''}${inWeek ? ' in-week' : ''}" data-action="open-day" data-day="${iso}">
       <span class="day-num">${d}</span>${chips}
     </button>`);
   }
   const title = m.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
   return `
+    ${renderOverview()}
     <section class="card cal">
       <div class="cal-head">
         <button class="icon-btn" data-action="month" data-delta="-1" aria-label="Vorheriger Monat">‹</button>
         <h2>${title}</h2>
+        ${isCurrentMonth ? '' : '<button class="btn-text" data-action="month-today">Heute</button>'}
         <button class="icon-btn" data-action="month" data-delta="1" aria-label="Nächster Monat">›</button>
       </div>
       <div class="weekdays">${['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map((w) => `<span>${w}</span>`).join('')}</div>
       <div class="grid">${cells.join('')}</div>
       <div class="legend">
         ${PEOPLE.map((p) => `<span><i class="dot ${p.toLowerCase()}"></i>${p}</span>`).join('')}
-        <span>F = Fiat 500e · C = Citroën</span>
+        <span>F Fiat · C Citroën</span>
       </div>
     </section>
     <section class="card">
-      <h3>Woche vom ${fmtDate(weekStart)}</h3>
-      <button class="btn block" data-action="copy-week">Auf nächste Woche übertragen</button>
-      <p class="muted small">Markiert ist die Woche des zuletzt geöffneten Tags.</p>
+      <h3>Woche übertragen</h3>
+      <div class="week-pick">
+        <button class="icon-btn" data-action="week" data-delta="-7" aria-label="Vorherige Woche">‹</button>
+        <div class="week-label"><strong>KW ${weekNumber(weekStart)}</strong><span class="muted">${shortRange(weekStart)}</span></div>
+        <button class="icon-btn" data-action="week" data-delta="7" aria-label="Nächste Woche">›</button>
+      </div>
+      <button class="btn block" data-action="copy-week">Nach KW ${weekNumber(addDays(weekStart, 7))} kopieren</button>
     </section>
     ${state.dayDialog ? renderDayDialog(state.dayDialog) : ''}`;
 }
@@ -242,7 +295,11 @@ function renderDayDialog(iso) {
   return `
     <div class="overlay" data-action="close-day">
       <form class="dialog" id="day-form" data-day="${iso}">
-        <h3>${fmtDate(iso)}</h3>
+        <div class="sheet-head">
+          <button class="icon-btn" type="button" data-action="day-step" data-delta="-1" aria-label="Vorheriger Tag">‹</button>
+          <h3>${fmtDate(iso)}</h3>
+          <button class="icon-btn" type="button" data-action="day-step" data-delta="1" aria-label="Nächster Tag">›</button>
+        </div>
         ${CARS.map((c) => {
           const cur = bookingFor(iso, c.id)?.driver || '';
           return `<fieldset>
@@ -254,8 +311,8 @@ function renderDayDialog(iso) {
           </fieldset>`;
         }).join('')}
         <p class="warn" id="day-warn" hidden></p>
-        <button class="btn primary block" type="submit">Speichern</button>
-        <button class="btn link block" type="button" data-action="close-day">Abbrechen</button>
+        <p class="muted small center">Änderungen werden sofort gespeichert.</p>
+        <button class="btn primary block" type="button" data-action="close-day">Fertig</button>
       </form>
     </div>`;
 }
@@ -270,22 +327,16 @@ function updateDayWarning(form) {
   } else warn.hidden = true;
 }
 
-function submitDay(form) {
+function saveDayCar(form, car) {
   const iso = form.dataset.day;
-  const f = new FormData(form);
-  const me = state.name.toLowerCase();
-  const changes = CARS
-    .map((c) => ({ date: iso, car: c.id, driver: f.get(c.id) || null }))
-    .filter((ch) => (bookingFor(iso, ch.car)?.driver || null) !== ch.driver);
-  state.dayDialog = null;
-  render();
-  if (!changes.length) return;
-  setBookingsBatch(state.code, changes, me).then(() => {}, (e) => toast('Fehler: ' + e.message));
-  toast('Gespeichert');
+  const driver = new FormData(form).get(car) || null;
+  if ((bookingFor(iso, car)?.driver || null) === driver) return;
+  setBookingsBatch(state.code, [{ date: iso, car, driver }], state.name.toLowerCase())
+    .catch((e) => toast('Fehler: ' + e.message));
 }
 
 function copyWeek() {
-  const start = mondayOf(state.selectedDay);
+  const start = state.copyWeek || mondayOf(isoDate(new Date()));
   const changes = [];
   for (let i = 0; i < 7; i++) {
     const src = addDays(start, i), dst = addDays(start, i + 7);
@@ -295,11 +346,15 @@ function copyWeek() {
     }
   }
   if (!changes.length) return toast('Folgewoche ist bereits identisch');
-  if (!confirm(`Belegung von ${fmtDate(start)} – ${fmtDate(addDays(start, 6))} auf die Folgewoche übertragen? Bestehende Einträge dort werden überschrieben.`)) return;
-  setBookingsBatch(state.code, changes, state.name.toLowerCase()).catch((e) => toast('Fehler: ' + e.message));
-  state.selectedDay = addDays(start, 7);
-  toast('Woche kopiert');
+  const undo = changes.map((ch) => ({ ...ch, driver: bookingFor(ch.date, ch.car)?.driver || null }));
+  const me = state.name.toLowerCase();
+  setBookingsBatch(state.code, changes, me).catch((e) => toast('Fehler: ' + e.message));
+  state.copyWeek = addDays(start, 7);
   render();
+  toast(`Nach KW ${weekNumber(state.copyWeek)} kopiert`, {
+    label: 'Rückgängig',
+    run: () => setBookingsBatch(state.code, undo, me).catch((e) => toast('Fehler: ' + e.message))
+  });
 }
 
 /* ---------- Fuel / Charge ---------- */
@@ -320,36 +375,78 @@ function sortEntries(list) {
     ((b.createdAt?.toMillis?.() ?? Infinity) - (a.createdAt?.toMillis?.() ?? Infinity)));
 }
 
+function monthLabel(iso) {
+  const [y, m] = iso.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
+}
+
 function renderEntries() {
+  const list = sortEntries(state.entries.filter((e) => e.car === 'fiat' || e.car === 'citroen'));
+  const groups = [];
+  for (const e of list) {
+    const key = e.date.slice(0, 7);
+    if (groups[groups.length - 1]?.key !== key) groups.push({ key, items: [], total: 0 });
+    const g = groups[groups.length - 1];
+    g.items.push(e);
+    g.total += e.cost;
+  }
+  return `
+    <button class="btn primary block add-btn" data-action="open-entry">${icon('plus')}<span>Tanken / Laden erfassen</span></button>
+    ${groups.length ? groups.map((g) => `
+      <section class="card">
+        <div class="group-head"><h3>${monthLabel(g.key + '-01')}</h3><span class="muted">${eur.format(g.total)}</span></div>
+        <ul class="list">${g.items.map(entryItem).join('')}</ul>
+      </section>`).join('') : `
+      <section class="card empty-state">
+        <p><strong>Noch keine Einträge</strong></p>
+        <p class="muted">Nach dem Tanken oder Laden einfach Kilometerstand, Menge und Preis erfassen – die Auswertung rechnet den Rest.</p>
+      </section>`}
+    ${state.entrySheet ? renderEntrySheet() : ''}`;
+}
+
+function renderEntrySheet() {
   const car = state.entryCar;
   const last = lastOdometer(car);
-  const list = sortEntries(state.entries.filter((e) => e.car === 'fiat' || e.car === 'citroen'));
   return `
-    <section class="card">
-      <h3>Neuer Eintrag</h3>
-      <form id="entry-form">
+    <div class="overlay" data-action="close-entry">
+      <form class="dialog" id="entry-form">
+        <div class="sheet-head">
+          <h3>Neuer Eintrag</h3>
+          <button class="icon-btn" type="button" data-action="close-entry" aria-label="Schließen">✕</button>
+        </div>
         <div class="seg">
           ${CARS.map((c) => `<label class="seg-opt"><input type="radio" name="car" value="${c.id}" ${c.id === car ? 'checked' : ''}><span>${c.name}</span></label>`).join('')}
         </div>
         <div class="row">
-          <label>Datum<input type="date" name="date" value="${isoDate(new Date())}" required></label>
-          <label>Kilometerstand<input name="odometer" inputmode="numeric" pattern="[0-9]*" value="${last >= 0 ? last : ''}" required></label>
+          <label><span>Datum</span><input type="date" name="date" value="${isoDate(new Date())}" required></label>
+          <label><span>Kilometerstand</span><input name="odometer" inputmode="numeric" pattern="[0-9]*" value="${last >= 0 ? last : ''}" required></label>
         </div>
         <div class="row">
-          <label>Menge (<span id="unit">${UNIT[car]}</span>)<input name="amount" inputmode="decimal" required></label>
-          <label>Kosten (€)<input name="cost" inputmode="decimal" required></label>
+          <label><span>Menge in <b id="unit">${UNIT[car]}</b></span><input name="amount" inputmode="decimal" placeholder="0,0" required></label>
+          <label><span>Kosten in €</span><input name="cost" inputmode="decimal" placeholder="0,00" required></label>
         </div>
+        <p class="preview muted small" id="entry-preview">&nbsp;</p>
         <label class="check" id="full-wrap" ${car === 'citroen' ? '' : 'hidden'}>
           <input type="checkbox" name="full" checked> Vollgetankt
         </label>
-        <label>Notiz<input name="note" maxlength="300" placeholder="optional"></label>
+        <label><span>Notiz</span><input name="note" maxlength="300" placeholder="optional"></label>
         <button class="btn primary block" type="submit">Speichern</button>
       </form>
-    </section>
-    <section class="card">
-      <h3>Einträge</h3>
-      ${list.length ? `<ul class="list">${list.map(entryItem).join('')}</ul>` : '<p class="muted">Noch keine Einträge.</p>'}
-    </section>`;
+    </div>`;
+}
+
+function updateEntryPreview(form) {
+  const f = new FormData(form);
+  const car = f.get('car');
+  const amount = parseNum(f.get('amount'));
+  const cost = parseNum(f.get('cost'));
+  const odo = Number(f.get('odometer'));
+  const last = lastOdometer(car);
+  const parts = [];
+  if (amount > 0 && cost >= 0) parts.push(`${num.format(cost / amount)} €/${UNIT[car]}`);
+  if (last >= 0 && Number.isInteger(odo) && odo > last) parts.push(`+${num.format(odo - last)} km seit letztem Eintrag`);
+  if (last >= 0 && Number.isInteger(odo) && odo < last) parts.push(`Kilometerstand unter letztem Wert (${num.format(last)})`);
+  form.querySelector('#entry-preview').innerHTML = parts.length ? esc(parts.join(' · ')) : '&nbsp;';
 }
 
 function entryItem(e) {
@@ -373,6 +470,7 @@ function onEntryCarChange(form) {
   form.querySelector('#full-wrap').hidden = car !== 'citroen';
   const last = lastOdometer(car);
   form.elements.odometer.value = last >= 0 ? last : '';
+  updateEntryPreview(form);
 }
 
 function submitEntry(form) {
@@ -400,9 +498,9 @@ function submitEntry(form) {
     createdBy: state.name.toLowerCase()
   };
   addItem(state.code, 'entries', data).catch((e) => toast('Fehler: ' + e.message));
-  form.reset();
-  toast('Gespeichert');
+  state.entrySheet = false;
   render();
+  toast('Gespeichert');
 }
 
 /* ---------- Stats ---------- */
@@ -551,6 +649,7 @@ const TABS = [
 const ICONS = {
   calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
   fuel: '<path d="M4 21V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v16M3 21h13M4 11h11"/><path d="M15 8h2a2 2 0 0 1 2 2v7a1.5 1.5 0 0 0 3 0V9l-3-3"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
   chart: '<path d="M4 20h16M7 16v-5M12 16V7M17 16v-8"/>',
   gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/>'
 };
@@ -565,9 +664,12 @@ function render() {
   const active = document.activeElement;
   const focusName = active && active.form && active.name && active.type !== 'radio' ? { form: active.form.id, name: active.name, value: active.value } : null;
   if (focusName) return; // Nicht neu rendern, während der Nutzer tippt
-  // Ungespeicherte Auswahl im Tagesdialog über Re-Renders hinweg erhalten
-  const dayForm = document.getElementById('day-form');
-  const dayDraft = dayForm && dayForm.dataset.day === state.dayDialog ? Object.fromEntries(new FormData(dayForm)) : null;
+  // Ungespeicherte Formulareingaben (Eintragsformular) über Re-Renders hinweg erhalten
+  const drafts = ['entry-form'].map((id) => {
+    const form = document.getElementById(id);
+    if (!form) return null;
+    return { id, fields: [...form.elements].filter((el) => el.name).map((el) => ({ name: el.name, value: el.value, checked: el.checked, type: el.type })) };
+  }).filter(Boolean);
   app.innerHTML = `
     <header class="topbar">
       <span>${esc(TABS.find((t) => t.id === state.tab).label)}</span>
@@ -579,15 +681,24 @@ function render() {
       ${TABS.map((t) => `<button class="tab ${t.id === state.tab ? 'active' : ''}" data-action="tab" data-tab="${t.id}">
         ${icon(t.icon)}<span>${t.short}</span></button>`).join('')}
     </nav>`;
-  if (dayDraft) {
-    const form = document.getElementById('day-form');
-    for (const [name, value] of Object.entries(dayDraft)) {
-      const input = form?.querySelector(`input[name="${name}"][value="${value}"]`);
-      if (input) input.checked = true;
+  for (const draft of drafts) {
+    const form = document.getElementById(draft.id);
+    if (!form) continue;
+    for (const f of draft.fields) {
+      const els = [...form.elements].filter((el) => el.name === f.name);
+      if (f.type === 'radio') { const r = els.find((el) => el.value === f.value); if (r && f.checked) r.checked = true; }
+      else if (f.type === 'checkbox') els.forEach((el) => { el.checked = f.checked; });
+      else els.forEach((el) => { el.value = f.value; });
     }
-    if (form) updateDayWarning(form);
-  } else if (state.dayDialog) {
-    updateDayWarning(document.getElementById('day-form'));
+  }
+  const dayForm = document.getElementById('day-form');
+  if (dayForm) updateDayWarning(dayForm);
+  const entryForm = document.getElementById('entry-form');
+  if (entryForm) {
+    const car = new FormData(entryForm).get('car');
+    entryForm.querySelector('#unit').textContent = UNIT[car];
+    entryForm.querySelector('#full-wrap').hidden = car !== 'citroen';
+    updateEntryPreview(entryForm);
   }
   window.scrollTo(0, scroll);
 }
@@ -623,6 +734,7 @@ app.addEventListener('click', (ev) => {
     case 'tab':
       state.tab = el.dataset.tab;
       state.dayDialog = null;
+      state.entrySheet = false;
       document.activeElement?.blur();
       app.innerHTML = '';
       render();
@@ -633,15 +745,37 @@ app.addEventListener('click', (ev) => {
       break;
     case 'period': state.statsPeriod = el.dataset.period; break;
     case 'open-day': state.selectedDay = el.dataset.day; state.dayDialog = el.dataset.day; break;
+    case 'day-step':
+      state.dayDialog = addDays(state.dayDialog, Number(el.dataset.delta));
+      state.selectedDay = state.dayDialog;
+      break;
+    case 'month-today': state.month = firstOfMonth(new Date()); break;
+    case 'week':
+      state.copyWeek = addDays(state.copyWeek || mondayOf(isoDate(new Date())), Number(el.dataset.delta));
+      break;
+    case 'open-entry': state.entrySheet = true; break;
+    case 'close-entry':
+      if (ev.target !== el && !el.matches('button')) return;
+      state.entrySheet = false;
+      break;
     case 'close-day':
-      if (ev.target !== el) return; // Klicks im Dialog nicht als Overlay-Klick werten
+      if (ev.target !== el && !el.matches('button')) return; // Klicks im Dialog nicht als Overlay-Klick werten
       state.dayDialog = null;
       break;
     case 'copy-week': copyWeek(); return;
-    case 'delete-entry':
-      if (!confirm('Eintrag löschen?')) return;
-      deleteItem(state.code, 'entries', el.dataset.id).catch((e) => toast('Fehler: ' + e.message));
+    case 'delete-entry': {
+      const entry = state.entries.find((e) => e.id === el.dataset.id);
+      if (!entry) return;
+      deleteItem(state.code, 'entries', entry.id).catch((e) => toast('Fehler: ' + e.message));
+      toast('Eintrag gelöscht', {
+        label: 'Rückgängig',
+        run: () => {
+          const { id, createdAt, ...data } = entry;
+          addItem(state.code, 'entries', data).catch((e) => toast('Fehler: ' + e.message));
+        }
+      });
       return;
+    }
     default: return;
   }
   document.activeElement?.blur();
@@ -650,16 +784,21 @@ app.addEventListener('click', (ev) => {
 
 app.addEventListener('change', (ev) => {
   const form = ev.target.form;
-  if (form?.id === 'day-form') updateDayWarning(form);
+  if (form?.id === 'day-form') { updateDayWarning(form); saveDayCar(form, ev.target.name); }
   if (form?.id === 'entry-form' && ev.target.name === 'car') onEntryCarChange(form);
+});
+
+app.addEventListener('input', (ev) => {
+  const form = ev.target.form;
+  if (form?.id === 'entry-form') updateEntryPreview(form);
 });
 
 app.addEventListener('submit', (ev) => {
   ev.preventDefault();
   const form = ev.target;
   document.activeElement?.blur();
-  if (form.id === 'day-form') submitDay(form);
-  else if (form.id === 'entry-form') submitEntry(form);
+  if (form.id === 'day-form') return;
+  if (form.id === 'entry-form') submitEntry(form);
   else if (form.id === 'join-form' || form.id === 'switch-form') {
     const code = String(new FormData(form).get('code') || '').trim();
     if (!CODE_RE.test(code)) {
