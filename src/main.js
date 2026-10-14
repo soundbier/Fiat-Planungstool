@@ -18,9 +18,9 @@ const state = {
   entries: [],
   month: firstOfMonth(new Date()),
   selectedDay: isoDate(new Date()),
-  statsYear: new Date().getFullYear(),
+  statsPeriod: 'year',
+  entryCar: 'fiat',
   dayDialog: null,
-  editEntry: null,
   setupStep: null,
   newCode: null,
   error: null
@@ -305,152 +305,209 @@ function copyWeek() {
 
 /* ---------- Fuel / Charge ---------- */
 
+const UNIT = { fiat: 'kWh', citroen: 'L' };
+
+function carName(id) { return CARS.find((c) => c.id === id)?.name || id; }
+
+function lastOdometer(car) {
+  return state.entries
+    .filter((e) => e.car === car && Number.isFinite(e.odometer))
+    .reduce((max, e) => Math.max(max, e.odometer), -1);
+}
+
+function sortEntries(list) {
+  return [...list].sort((a, b) =>
+    b.date.localeCompare(a.date) || (b.odometer - a.odometer) ||
+    ((b.createdAt?.toMillis?.() ?? Infinity) - (a.createdAt?.toMillis?.() ?? Infinity)));
+}
+
 function renderEntries() {
-  const e = state.editEntry || { person: state.name, type: 'fuel', date: isoDate(new Date()), amount: '', cost: '', odometer: null, note: '' };
-  const list = [...state.entries].sort((a, b) => b.date.localeCompare(a.date));
+  const car = state.entryCar;
+  const last = lastOdometer(car);
+  const list = sortEntries(state.entries.filter((e) => e.car === 'fiat' || e.car === 'citroen'));
   return `
     <section class="card">
-      <h3>${state.editEntry ? 'Eintrag bearbeiten' : 'Tanken / Laden erfassen'}</h3>
+      <h3>Tanken / Laden erfassen</h3>
       <form id="entry-form">
-        ${personSelect(e.person)}
         <div class="seg">
-          <label class="seg-opt"><input type="radio" name="type" value="fuel" ${e.type === 'fuel' ? 'checked' : ''}><span>⛽ Tanken</span></label>
-          <label class="seg-opt"><input type="radio" name="type" value="charge" ${e.type === 'charge' ? 'checked' : ''}><span>⚡ Laden</span></label>
+          ${CARS.map((c) => `<label class="seg-opt"><input type="radio" name="car" value="${c.id}" ${c.id === car ? 'checked' : ''}><span>${c.id === 'fiat' ? '⚡' : '⛽'} ${c.name}</span></label>`).join('')}
         </div>
-        <label>Datum<input type="date" name="date" value="${e.date}" required></label>
         <div class="row">
-          <label>Menge (L / kWh)<input name="amount" inputmode="decimal" value="${e.amount === '' ? '' : String(e.amount).replace('.', ',')}" required></label>
-          <label>Kosten (€)<input name="cost" inputmode="decimal" value="${e.cost === '' ? '' : String(e.cost).replace('.', ',')}" required></label>
+          <label>Datum<input type="date" name="date" value="${isoDate(new Date())}" required></label>
+          <label>Kilometerstand<input name="odometer" inputmode="numeric" pattern="[0-9]*" value="${last >= 0 ? last : ''}" required></label>
         </div>
-        <label>Kilometerstand (optional)<input name="odometer" inputmode="numeric" pattern="[0-9]*" value="${e.odometer ?? ''}"></label>
-        <label>Notiz<input name="note" maxlength="300" value="${esc(e.note)}"></label>
+        <div class="row">
+          <label>Menge (<span id="unit">${UNIT[car]}</span>)<input name="amount" inputmode="decimal" required></label>
+          <label>Kosten (€)<input name="cost" inputmode="decimal" required></label>
+        </div>
+        <label class="check" id="full-wrap" ${car === 'citroen' ? '' : 'hidden'}>
+          <input type="checkbox" name="full" checked> Vollgetankt
+        </label>
+        <label>Notiz<input name="note" maxlength="300" placeholder="optional"></label>
         <button class="btn primary block" type="submit">Speichern</button>
-        ${state.editEntry ? '<button class="btn link block" type="button" data-action="cancel-entry">Abbrechen</button>' : ''}
       </form>
     </section>
     <section class="card">
-      <h3>Verlauf</h3>
+      <h3>Einträge</h3>
       ${list.length ? `<ul class="list">${list.map(entryItem).join('')}</ul>` : '<p class="muted">Noch keine Einträge.</p>'}
     </section>`;
 }
 
 function entryItem(e) {
-  const unit = e.type === 'fuel' ? 'L' : 'kWh';
-  const per = e.amount > 0 ? `${num.format(e.cost / e.amount)} €/${unit}` : '';
+  const unit = UNIT[e.car];
+  const per = e.amount > 0 ? ` · ${num.format(e.cost / e.amount)} €/${unit}` : '';
+  const who = DRIVERS[e.createdBy] || '';
   return `<li class="item">
-    <span class="type">${e.type === 'fuel' ? '⛽' : '⚡'}</span>
+    <span class="type">${e.car === 'fiat' ? '⚡' : '⛽'}</span>
     <div class="grow">
-      <strong>${eur.format(e.cost)}</strong> <span class="muted">${num.format(e.amount)} ${unit} · ${per}</span>
-      <div class="note"><i class="dot ${e.person.toLowerCase()}"></i>${esc(e.person)} · ${fmtDate(e.date)}${e.odometer != null ? ` · ${num.format(e.odometer)} km` : ''}${e.note ? ` · ${esc(e.note)}` : ''}</div>
+      <strong>${eur.format(e.cost)}</strong> <span class="muted">${num.format(e.amount)} ${unit}${per}</span>
+      <div class="note">${esc(carName(e.car))} · ${fmtDate(e.date)} · ${num.format(e.odometer)} km${e.car === 'citroen' ? (e.full ? ' · voll' : ' · teilweise') : ''}${who ? ` · <i class="dot ${e.createdBy}"></i>${who}` : ''}${e.note ? ` · ${esc(e.note)}` : ''}</div>
     </div>
-    <button class="icon-btn small" data-action="edit-entry" data-id="${e.id}" aria-label="Bearbeiten">✎</button>
     <button class="icon-btn small danger" data-action="delete-entry" data-id="${e.id}" aria-label="Löschen">✕</button>
   </li>`;
 }
 
-async function submitEntry(form) {
+function onEntryCarChange(form) {
+  const car = new FormData(form).get('car');
+  state.entryCar = car;
+  form.querySelector('#unit').textContent = UNIT[car];
+  form.querySelector('#full-wrap').hidden = car !== 'citroen';
+  const last = lastOdometer(car);
+  form.elements.odometer.value = last >= 0 ? last : '';
+}
+
+function submitEntry(form) {
   const f = new FormData(form);
+  const car = f.get('car');
+  const date = String(f.get('date') || '');
   const amount = parseNum(f.get('amount'));
   const cost = parseNum(f.get('cost'));
-  const odoRaw = String(f.get('odometer') || '').trim();
-  const odometer = odoRaw === '' ? null : Number(odoRaw);
+  const odometer = Number(String(f.get('odometer') || '').trim());
+  if (!UNIT[car]) return toast('Bitte Auto wählen');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return toast('Ungültiges Datum');
+  if (!(Number.isInteger(odometer) && odometer >= 0 && odometer < 10000000)) return toast('Ungültiger Kilometerstand');
   if (!(amount > 0 && amount < 10000)) return toast('Ungültige Menge');
   if (!(cost >= 0 && cost < 100000)) return toast('Ungültige Kosten');
-  if (odometer !== null && !(Number.isInteger(odometer) && odometer >= 0 && odometer < 10000000)) return toast('Ungültiger Kilometerstand');
+  const last = lastOdometer(car);
+  if (odometer < last && !confirm(`Kilometerstand ${num.format(odometer)} ist kleiner als der letzte (${num.format(last)}). Trotzdem speichern?`)) return;
   const data = {
-    person: f.get('person'),
-    type: f.get('type'),
-    date: f.get('date'),
+    car,
+    date,
+    odometer,
     amount: Math.round(amount * 100) / 100,
     cost: Math.round(cost * 100) / 100,
-    odometer,
-    note: String(f.get('note') || '').trim().slice(0, 300)
+    full: car === 'citroen' ? f.get('full') === 'on' : false,
+    note: String(f.get('note') || '').trim().slice(0, 300),
+    createdBy: state.name.toLowerCase()
   };
-  if (!PEOPLE.includes(data.person) || !['fuel', 'charge'].includes(data.type)) return toast('Bitte Auswahl prüfen');
-  const editId = state.editEntry?.id;
-  const op = editId ? updateItem(state.code, 'entries', editId, data) : addItem(state.code, 'entries', data);
-  state.editEntry = null;
-  render();
+  addItem(state.code, 'entries', data).catch((e) => toast('Fehler: ' + e.message));
+  form.reset();
   toast('Gespeichert');
-  op.catch((e) => toast('Fehler: ' + e.message));
+  render();
 }
 
 /* ---------- Stats ---------- */
 
+const PERIODS = [
+  { id: '30', label: '30 Tage' },
+  { id: 'year', label: 'Jahr' },
+  { id: 'all', label: 'Alles' }
+];
+
+function periodStart() {
+  const now = new Date();
+  if (state.statsPeriod === '30') return isoDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30));
+  if (state.statsPeriod === 'year') return `${now.getFullYear()}-01-01`;
+  return '0000-00-00';
+}
+
+function carStats(car, from) {
+  const list = state.entries
+    .filter((e) => e.car === car && e.date >= from)
+    .sort((a, b) => a.odometer - b.odometer || a.date.localeCompare(b.date));
+  const totalCost = list.reduce((s, e) => s + e.cost, 0);
+  const totalAmount = list.reduce((s, e) => s + e.amount, 0);
+  const km = list.length > 1 ? list[list.length - 1].odometer - list[0].odometer : 0;
+  const rest = list.slice(1);
+  const restAmount = rest.reduce((s, e) => s + e.amount, 0);
+  const restCost = rest.reduce((s, e) => s + e.cost, 0);
+  return {
+    count: list.length,
+    km,
+    consumption: km > 0 ? restAmount / km * 100 : null,
+    costPer100: km > 0 ? restCost / km * 100 : null,
+    avgPrice: totalAmount > 0 ? totalCost / totalAmount : null,
+    totalCost,
+    months: monthlyCosts(list)
+  };
+}
+
+function monthlyCosts(list) {
+  if (!list.length) return [];
+  const dates = list.map((e) => e.date).sort();
+  let [y, m] = dates[0].split('-').map(Number);
+  const [ey, em] = dates[dates.length - 1].split('-').map(Number);
+  const out = [];
+  while (y < ey || (y === ey && m <= em)) {
+    const key = `${y}-${pad(m)}`;
+    out.push({
+      key,
+      label: new Date(y, m - 1, 1).toLocaleDateString('de-DE', { month: 'short', year: '2-digit' }),
+      value: list.filter((e) => e.date.startsWith(key)).reduce((s, e) => s + e.cost, 0)
+    });
+    if (++m > 12) { m = 1; y++; }
+  }
+  return out;
+}
+
+function barChart(months, car) {
+  if (!months.length) return '<p class="muted">Keine Daten.</p>';
+  const barW = 28, gap = 10, h = 140, top = 18, bottom = 22;
+  const max = Math.max(1, ...months.map((m) => m.value));
+  const width = months.length * (barW + gap) + gap;
+  const bars = months.map((m, i) => {
+    const bh = (m.value / max) * (h - top - bottom);
+    const x = gap + i * (barW + gap);
+    const y = h - bottom - bh;
+    return `<g>
+      <title>${esc(m.label)}: ${eur.format(m.value)}</title>
+      <rect x="${x}" y="${y}" width="${barW}" height="${Math.max(bh, m.value > 0 ? 1 : 0)}" rx="4" class="bar-${car}"/>
+      ${m.value > 0 ? `<text x="${x + barW / 2}" y="${y - 4}" class="bar-val">${Math.round(m.value)}</text>` : ''}
+      <text x="${x + barW / 2}" y="${h - 6}" class="bar-lbl">${esc(m.label)}</text>
+    </g>`;
+  }).join('');
+  return `<div class="chart-scroll"><svg class="chart" viewBox="0 0 ${width} ${h}" width="${width}" height="${h}" role="img" aria-label="Kosten pro Monat">
+    <line x1="0" y1="${h - bottom}" x2="${width}" y2="${h - bottom}" class="axis"/>${bars}</svg></div>`;
+}
+
 function renderStats() {
-  const y = String(state.statsYear);
-  const entries = state.entries.filter((e) => e.date.startsWith(y));
-  const bookings = state.bookings.filter((b) => b.date.startsWith(y));
-  const total = entries.reduce((s, e) => s + e.cost, 0);
-
-  const perPerson = PEOPLE.map((p) => {
-    const es = entries.filter((e) => e.person === p);
-    const cost = es.reduce((s, e) => s + e.cost, 0);
-    const liters = es.filter((e) => e.type === 'fuel').reduce((s, e) => s + e.amount, 0);
-    const kwh = es.filter((e) => e.type === 'charge').reduce((s, e) => s + e.amount, 0);
-    const days = new Set(bookings.filter((b) => b.driver === p.toLowerCase()).map((b) => b.date));
-    return { p, cost, liters, kwh, count: es.length, bookingDays: days.size, share: total ? cost / total : 0 };
-  });
-
-  const months = Array.from({ length: 12 }, (_, i) => {
-    const key = `${y}-${pad(i + 1)}`;
-    const row = { label: new Date(state.statsYear, i, 1).toLocaleDateString('de-DE', { month: 'short' }) };
-    PEOPLE.forEach((p) => { row[p] = entries.filter((e) => e.person === p && e.date.startsWith(key)).reduce((s, e) => s + e.cost, 0); });
-    return row;
-  });
-  const maxMonth = Math.max(1, ...months.map((m) => PEOPLE.reduce((s, p) => s + m[p], 0)));
-
-  const half = total / PEOPLE.length;
-  const [a, b] = perPerson;
-  const diff = a.cost - half;
-  const balance = Math.abs(diff) < 0.005
-    ? 'Ausgeglichen.'
-    : `${diff < 0 ? a.p : b.p} schuldet ${diff < 0 ? b.p : a.p} ${eur.format(Math.abs(diff))} (bei 50/50-Teilung).`;
-
-  const odo = state.entries.filter((e) => e.odometer != null && e.date.startsWith(y)).map((e) => e.odometer);
-  const km = odo.length > 1 ? Math.max(...odo) - Math.min(...odo) : 0;
-
+  const from = periodStart();
   return `
     <section class="card">
-      <div class="cal-head">
-        <button class="icon-btn" data-action="year" data-delta="-1" aria-label="Vorheriges Jahr">‹</button>
-        <h2>${y}</h2>
-        <button class="icon-btn" data-action="year" data-delta="1" aria-label="Nächstes Jahr">›</button>
+      <div class="seg">
+        ${PERIODS.map((p) => `<button class="seg-opt btn-seg ${p.id === state.statsPeriod ? 'active' : ''}" data-action="period" data-period="${p.id}">${p.label}</button>`).join('')}
       </div>
-      <div class="stat-big">${eur.format(total)}<small>Gesamtkosten</small></div>
-      ${km ? `<p class="muted center">${num.format(km)} km gefahren · ${eur.format(total / km * 100)} / 100 km</p>` : ''}
     </section>
-    <div class="stats-grid">
-      ${perPerson.map((s) => `
-        <section class="card person-card ${s.p.toLowerCase()}">
-          <h3>${s.p}</h3>
-          <div class="stat">${eur.format(s.cost)}</div>
-          <div class="muted">${Math.round(s.share * 100)} % der Kosten</div>
+    ${CARS.map((c) => {
+      const s = carStats(c.id, from);
+      const unit = UNIT[c.id];
+      const fmt = (v, suffix) => (v == null ? '–' : `${num.format(v)} ${suffix}`);
+      return `
+        <section class="card car-card ${c.id}">
+          <h3>${c.id === 'fiat' ? '⚡' : '⛽'} ${c.name}</h3>
+          <div class="stat-big">${eur.format(s.totalCost)}<small>Gesamtkosten · ${s.count} Einträge</small></div>
           <ul class="kv">
-            <li><span>Getankt</span><span>${num.format(s.liters)} L</span></li>
-            <li><span>Geladen</span><span>${num.format(s.kwh)} kWh</span></li>
-            <li><span>Einträge</span><span>${s.count}</span></li>
-            <li><span>Nutzungstage</span><span>${s.bookingDays}</span></li>
+            <li><span>Gefahrene km</span><span>${num.format(s.km)} km</span></li>
+            <li><span>Ø Verbrauch</span><span>${fmt(s.consumption, `${unit}/100 km`)}</span></li>
+            <li><span>Ø Kosten</span><span>${s.costPer100 == null ? '–' : `${eur.format(s.costPer100)} /100 km`}</span></li>
+            <li><span>Ø Preis</span><span>${s.avgPrice == null ? '–' : `${num.format(s.avgPrice)} €/${unit}`}</span></li>
           </ul>
-        </section>`).join('')}
-    </div>
-    <section class="card">
-      <h3>Ausgleich</h3>
-      <p>${balance}</p>
-    </section>
-    <section class="card">
-      <h3>Kosten pro Monat</h3>
-      <div class="bars">
-        ${months.map((m) => `
-          <div class="bar-col" title="${m.label}: ${eur.format(PEOPLE.reduce((s, p) => s + m[p], 0))}">
-            <div class="bar-stack">
-              ${PEOPLE.map((p) => `<div class="bar ${p.toLowerCase()}" style="height:${(m[p] / maxMonth) * 100}%"></div>`).join('')}
-            </div>
-            <span>${m.label}</span>
-          </div>`).join('')}
-      </div>
-      <div class="legend">${PEOPLE.map((p) => `<span><i class="dot ${p.toLowerCase()}"></i>${p}</span>`).join('')}</div>
-    </section>`;
+          ${c.id === 'citroen' ? '<p class="hint">Der Verbrauch ist beim Citroën nur aussagekräftig, wenn jeweils vollgetankt wurde (Volltank-Einträge).</p>' : ''}
+          ${s.count === 1 ? '<p class="muted small">Für Verbrauch und km werden mindestens zwei Einträge benötigt.</p>' : ''}
+          <h4>Kosten pro Monat</h4>
+          ${barChart(s.months, c.id)}
+        </section>`;
+    }).join('')}`;
 }
 
 /* ---------- Settings ---------- */
@@ -557,7 +614,6 @@ app.addEventListener('click', async (ev) => {
     case 'tab':
       state.tab = el.dataset.tab;
       state.dayDialog = null;
-      state.editEntry = null;
       document.activeElement?.blur();
       app.innerHTML = '';
       render();
@@ -566,20 +622,13 @@ app.addEventListener('click', async (ev) => {
     case 'month':
       state.month = new Date(state.month.getFullYear(), state.month.getMonth() + Number(el.dataset.delta), 1);
       break;
-    case 'year': state.statsYear += Number(el.dataset.delta); break;
+    case 'period': state.statsPeriod = el.dataset.period; break;
     case 'open-day': state.selectedDay = el.dataset.day; state.dayDialog = el.dataset.day; break;
     case 'close-day':
       if (ev.target !== el) return; // Klicks im Dialog nicht als Overlay-Klick werten
       state.dayDialog = null;
       break;
     case 'copy-week': copyWeek(); return;
-    case 'edit-entry':
-      state.editEntry = state.entries.find((e) => e.id === el.dataset.id) || null;
-      document.activeElement?.blur();
-      render();
-      window.scrollTo(0, 0);
-      return;
-    case 'cancel-entry': state.editEntry = null; break;
     case 'delete-entry':
       if (!confirm('Eintrag löschen?')) return;
       deleteItem(state.code, 'entries', el.dataset.id).catch((e) => toast('Fehler: ' + e.message));
@@ -593,6 +642,7 @@ app.addEventListener('click', async (ev) => {
 app.addEventListener('change', (ev) => {
   const form = ev.target.form;
   if (form?.id === 'day-form') updateDayWarning(form);
+  if (form?.id === 'entry-form' && ev.target.name === 'car') onEntryCarChange(form);
 });
 
 app.addEventListener('submit', (ev) => {

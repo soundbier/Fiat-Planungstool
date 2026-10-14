@@ -228,3 +228,20 @@ input:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
 fieldset { border: 0; padding: 0; margin: 0; }
 legend { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
 .warn { background: #fff4d6; color: #7a5200; border-radius: 10px; padding: 10px 12px; margin: 0; font-size: 14px; }
+
+/* Tanken/Laden & Auswertung */
+h4 { font-size: 14px; margin: 16px 0 8px; color: var(--muted); font-weight: 600; }
+label.check { flex-direction: row; align-items: center; gap: 10px; font-size: 16px; color: var(--text); }
+label.check input { width: 22px; height: 22px; min-height: 0; padding: 0; -webkit-appearance: checkbox; appearance: auto; accent-color: var(--primary); }
+label[hidden] { display: none; }
+.car-card { border-top: 4px solid; }
+.car-card.fiat { border-top-color: #12a594; }
+.car-card.citroen { border-top-color: #e5701b; }
+.hint { background: #fff4d6; color: #7a5200; border-radius: 10px; padding: 10px 12px; font-size: 14px; margin: 12px 0 0; }
+.chart-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.chart { display: block; }
+.chart .axis { stroke: var(--border); }
+.chart .bar-fiat { fill: #12a594; }
+.chart .bar-citroen { fill: #e5701b; }
+.chart text { font-size: 10px; text-anchor: middle; fill: var(--muted); }
+.chart .bar-val { fill: var(--text); }
