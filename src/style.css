@@ -359,17 +359,19 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 /* ==========================================================================
    Übersicht Heute/Morgen
    ========================================================================== */
-/* Kompakte Tabelle: Autos × Heute/Morgen */
-.overview {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center;
-  column-gap: var(--space-2); row-gap: 6px; padding: var(--space-3) var(--space-4);
+.overview { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-4); }
+.overview .card { margin: 0; }
+.ov-day {
+  font: inherit; color: var(--text); text-align: left;
+  display: flex; flex-direction: column; gap: 6px; padding: var(--space-3);
+  transition: transform .1s;
 }
-.ov-head, .ov-cell { font: inherit; color: inherit; background: none; border: 0; padding: 0; min-width: 76px; text-align: center; }
-.ov-head { font-size: var(--fs-xs); font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; display: flex; flex-direction: column; align-items: center; padding-bottom: 2px; }
-.ov-date { font-weight: 500; text-transform: none; letter-spacing: 0; }
-.ov-car { font-size: var(--fs-md); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ov-cell .pill { display: inline-block; min-width: 64px; }
-.ov-cell:active, .ov-head:active, .due-strip:active { transform: scale(.96); }
+.ov-label { font-size: var(--fs-xs); font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 2px; }
+.ov-date { font-weight: 500; text-transform: none; letter-spacing: 0; margin-left: 2px; }
+.ov-car { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ov-row .car-tag { width: 24px; height: 24px; font-size: var(--fs-xs); }
+.ov-row .pill { min-width: 56px; text-align: center; }
+.ov-day:active, .due-strip:active { transform: scale(.98); }
 .ov-row { display: flex; justify-content: space-between; align-items: center; gap: 6px; font-size: var(--fs-md); }
 .ov-row .ov-car { font-size: inherit; font-weight: 400; }
 .due-strip {
