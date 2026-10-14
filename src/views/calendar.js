@@ -93,7 +93,7 @@ export function renderCalendar() {
     const iso = `${year}-${pad(month + 1)}-${pad(d)}`;
     const chips = cars().map((c) => {
       const b = bookingFor(iso, c.id);
-      return b ? `<span class="chip pc"${pc(b.driver)}>${esc(c.short)} ${esc(personName(b.driver))}</span>` : '';
+      return b ? `<span class="chip pc"${pc(b.driver)} aria-hidden="true">${esc(c.short)}</span>` : '';
     }).join('');
     const inWeek = iso >= weekStart && iso <= weekEnd;
     cells.push(`<button class="day${iso === today ? ' today' : ''}${iso < today ? ' past' : ''}${inWeek ? ' in-week' : ''}" data-action="open-day" data-day="${iso}" aria-label="${esc(dayLabel(iso))}"${iso === today ? ' aria-current="date"' : ''}>

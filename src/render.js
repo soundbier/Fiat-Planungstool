@@ -82,13 +82,14 @@ export function render() {
       <span class="topbar-right">
         <span class="sync ${state.sync}" role="status" title="${SYNC_LABEL[state.sync]}"><i aria-hidden="true"></i><span class="sync-text">${SYNC_LABEL[state.sync]}</span></span>
         <span class="me pc"${pc(state.name)}>${esc(personName(state.name))}</span>
+        <button class="topbar-btn${state.tab === 'settings' ? ' active' : ''}" data-action="tab" data-tab="settings" aria-label="Einstellungen"${state.tab === 'settings' ? ' aria-current="page"' : ''}>${icon('gear')}</button>
       </span>
     </header>
     ${state.error ? `<div class="banner" role="alert">${esc(state.error)}</div>` : ''}
     ${state.sync === 'offline' && !state.error ? `<div class="banner" role="status">Keine Verbindung zum Server – Änderungen sind nur auf diesem Gerät gespeichert und werden später übertragen.</div>` : ''}
     <main class="content"><h1 class="page-title">${esc(TABS.find((t) => t.id === state.tab).label)}</h1>${views[state.tab]()}</main>
     <nav class="tabbar" aria-label="Hauptnavigation">
-      ${TABS.map((t) => `<button class="tab ${t.id === state.tab ? 'active' : ''}" data-action="tab" data-tab="${t.id}"${t.id === state.tab ? ' aria-current="page"' : ''}>
+      ${TABS.filter((t) => t.id !== 'settings').map((t) => `<button class="tab ${t.id === state.tab ? 'active' : ''}" data-action="tab" data-tab="${t.id}"${t.id === state.tab ? ' aria-current="page"' : ''}>
         ${icon(t.icon)}<span>${t.short}</span>${t.id === 'reminders' && dueCount ? `<span class="badge" aria-label="${dueCount} fällig">${dueCount}</span>` : ''}</button>`).join('')}
     </nav>`;
   for (const draft of drafts) {

@@ -129,7 +129,9 @@ h4 { margin: var(--space-5) 0 var(--space-2); }
   position: sticky; top: 0; z-index: 10;
   display: flex; justify-content: space-between; align-items: center;
   padding: calc(env(safe-area-inset-top) + 10px) calc(env(safe-area-inset-right) + var(--space-4)) 10px calc(env(safe-area-inset-left) + var(--space-4));
-  background: var(--bg); border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  -webkit-backdrop-filter: saturate(1.6) blur(16px); backdrop-filter: saturate(1.6) blur(16px);
+  border-bottom: 1px solid var(--border);
   font-weight: 600; font-size: var(--fs-lg);
 }
 .topbar-title { opacity: 0; transition: opacity .15s; }
@@ -137,6 +139,12 @@ h4 { margin: var(--space-5) 0 var(--space-2); }
 .topbar { border-bottom-color: transparent; transition: border-color .15s; }
 .scrolled .topbar { border-bottom-color: var(--border); }
 .topbar-right { display: flex; align-items: center; gap: var(--space-3); }
+.topbar-btn {
+  display: grid; place-items: center; width: 36px; height: 36px; margin-right: calc(-1 * var(--space-2));
+  border: 0; border-radius: 50%; background: none; color: var(--muted);
+}
+.topbar-btn .tab-icon { width: 22px; height: 22px; }
+.topbar-btn.active { color: var(--primary); background: var(--input-bg); }
 .me { font-size: var(--fs-sm); font-weight: 600; }
 .me::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: currentColor; }
 .me.pc { color: var(--pc); }
@@ -157,17 +165,22 @@ h4 { margin: var(--space-5) 0 var(--space-2); }
 
 .tabbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
-  display: grid; grid-template-columns: repeat(5, 1fr);
+  display: grid; grid-template-columns: repeat(4, 1fr);
   padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-  background: var(--card); border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--card) 82%, transparent);
+  -webkit-backdrop-filter: saturate(1.6) blur(16px); backdrop-filter: saturate(1.6) blur(16px);
+  border-top: 1px solid var(--divider);
 }
 .tab {
   position: relative;
   height: var(--tabbar-h); border: 0; background: none; color: var(--muted);
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
   font-size: var(--fs-xs); font-family: inherit;
+  transition: color .15s;
 }
-.tab.active { color: var(--text); font-weight: 600; }
+.tab .tab-icon { width: 44px; height: 26px; padding: 2px 11px; border-radius: var(--radius-pill); transition: background-color .15s; }
+.tab.active { color: var(--primary); font-weight: 600; }
+.tab.active .tab-icon { background: color-mix(in srgb, var(--primary) 14%, transparent); stroke-width: 2.1; }
 .tab-icon { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
 .badge {
   position: absolute; top: 6px; left: calc(50% + 6px); min-width: 17px; height: 17px; padding: 0 var(--space-1);
@@ -362,20 +375,22 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
   display: flex; flex-direction: column; justify-content: flex-start; align-items: stretch; gap: 2px;
   font: inherit; padding: 3px 2px; overflow: hidden;
 }
-.day:active { opacity: .6; }
+.day:active { transform: scale(.95); }
 .day.empty { background: none; }
-.day.past { opacity: .55; }
-.day.in-week { border-color: var(--muted); }
-.day.today { background: var(--card); border-color: var(--text); }
-.day-num { text-align: center; font-size: var(--fs-sm); }
-.day.today .day-num { font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.day.past .day-num { color: var(--muted); }
+.day.past .chip { opacity: .55; }
+.day.in-week { border-color: color-mix(in srgb, var(--primary) 35%, transparent); }
+.day-num {
+  align-self: center; display: grid; place-items: center;
+  min-width: 24px; height: 24px; border-radius: var(--radius-pill); font-size: var(--fs-sm);
+}
+.day.today .day-num { background: var(--primary); color: var(--on-primary); font-weight: 700; }
+/* Buchung als farbiger Balken (Person) mit Auto-Kürzel */
 .chip {
-  display: block; font-size: 10px; line-height: 1.5; color: #fff; border-radius: 2px;
-  padding: 0 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left;
+  display: block; height: 14px; font-size: 10px; line-height: 14px; font-weight: 700; color: #fff;
+  border-radius: var(--radius-xs); text-align: center; overflow: hidden;
 }
 .chip.pc { background: var(--pc); }
-@media (min-width: 420px) { .chip { font-size: var(--fs-xs); } }
-:root[data-size="large"] .chip { font-size: var(--fs-xs); }
 .legend { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); justify-content: center; margin-top: var(--space-3); font-size: var(--fs-sm); color: var(--muted); }
 .legend .dot { margin-right: 6px; }
 .week-pick { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-3); }
