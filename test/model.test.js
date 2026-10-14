@@ -197,3 +197,47 @@ describe('Gemeinschaftskonto / Alle', () => {
     expect(s.transfers).toHaveLength(1);
   });
 });
+
+import { consumptionSeries, recurringDue, recurringFromEntry, recurringEntry, bookingConflict } from '../src/lib/model.js';
+
+describe('Verbrauch je Tankvorgang', () => {
+  it('Verbrenner: nur zwischen Volltankungen, Teilbetankungen aufaddiert', () => {
+    const list = [
+      fuel('2026-01-01', 1000, 40, 70),
+      fuel('2026-01-10', 1300, 10, 18, { full: false }),
+      fuel('2026-01-20', 1500, 20, 35, { id: 'b' })
+    ];
+    expect(consumptionSeries(list, 'citroen', true)).toEqual([{ id: 'b', date: '2026-01-20', km: 500, value: 6 }]);
+  });
+  it('Elektro: jeder Ladevorgang zählt', () => {
+    const e = (d, o, a) => ({ ...fuel(d, o, a, 5), car: 'fiat', full: false });
+    expect(consumptionSeries([e('2026-01-01', 0, 10), e('2026-01-05', 100, 15)], 'fiat', false).map((p) => p.value)).toEqual([15]);
+  });
+});
+
+describe('Wiederkehrende Kosten', () => {
+  const entry = { car: 'fiat', type: 'insurance', date: '2026-01-31', cost: 50, note: 'HUK', createdBy: 'lukas', paidBy: 'konto' };
+  it('aus Eintrag', () => {
+    const r = recurringFromEntry(entry, 1).data;
+    expect(r).toMatchObject({ start: '2026-01-31', next: '2026-02-28', intervalMonths: 1, paidBy: 'konto' });
+    expect(recurringFromEntry({ ...entry, type: 'fuel' }, 1).error).toBeTruthy();
+    expect(recurringFromEntry(entry, 0).error).toBeTruthy();
+  });
+  it('fällige Termine ohne wandernde Monatsenden', () => {
+    const r = recurringFromEntry(entry, 1).data;
+    expect(recurringDue(r, '2026-04-15')).toEqual({ dates: ['2026-02-28', '2026-03-31'], next: '2026-04-30' });
+    expect(recurringDue({ ...r, next: '2026-04-30' }, '2026-04-15').dates).toEqual([]);
+    expect(recurringEntry(r, '2026-02-28')).toEqual({ ...entry, date: '2026-02-28' });
+  });
+});
+
+describe('Buchungskonflikt', () => {
+  const b = { date: '2026-01-01', car: 'fiat', driver: 'marie', updatedBy: 'marie' };
+  it('erkennt fremde Buchung', () => {
+    expect(bookingConflict(b, 'lukas', 'lukas')).toBe('marie');
+    expect(bookingConflict(b, null, 'lukas')).toBe('marie');
+    expect(bookingConflict(null, 'lukas', 'lukas')).toBeNull();
+    expect(bookingConflict({ ...b, updatedBy: 'lukas' }, 'lukas', 'lukas')).toBeNull();
+    expect(bookingConflict(b, 'lukas', 'marie')).toBeNull();
+  });
+});

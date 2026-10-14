@@ -1,4 +1,4 @@
-import { carStats, settlement } from '../lib/model.js';
+import { carStats, consumptionSeries, settlement } from '../lib/model.js';
 import { esc, eur, isoDate, num } from '../lib/util.js';
 import { cars, cc, isCombustion, pc, personName, state, today, unit } from '../state.js';
 
@@ -36,6 +36,23 @@ export function barChart(months, car) {
     <line x1="0" y1="${h - bottom}" x2="${width}" y2="${h - bottom}" class="axis"/>${bars}</svg></div>`;
 }
 
+export function lineChart(series, car, u) {
+  const step = 32, h = 120, top = 16, bottom = 20, pad = 16;
+  const vals = series.map((p) => p.value);
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const span = max - min || 1;
+  const width = pad * 2 + (series.length - 1) * step;
+  const pts = series.map((p, i) => [pad + i * step, top + (1 - (p.value - min) / span) * (h - top - bottom)]);
+  return `<div class="chart-scroll"><svg class="chart"${cc(car)} viewBox="0 0 ${width} ${h}" width="${width}" height="${h}" role="img" aria-label="Verbrauch je Tank-/Ladevorgang">
+    <line x1="0" y1="${h - bottom}" x2="${width}" y2="${h - bottom}" class="axis"/>
+    <polyline points="${pts.map((p) => p.join(',')).join(' ')}" fill="none" stroke="var(--cc)" stroke-width="2"/>
+    ${series.map((p, i) => `<g><title>${esc(p.date.split('-').reverse().join('.'))}: ${num.format(p.value)} ${u}/100 km (${num.format(p.km)} km)</title>
+      <circle cx="${pts[i][0]}" cy="${pts[i][1]}" r="3.5" class="bar cc"/>
+      <text x="${pts[i][0]}" y="${pts[i][1] - 6}" class="bar-val">${num.format(Math.round(p.value * 10) / 10)}</text>
+      <text x="${pts[i][0]}" y="${h - 6}" class="bar-lbl">${esc(p.date.slice(8, 10) + '.' + p.date.slice(5, 7))}</text></g>`).join('')}
+  </svg></div>`;
+}
+
 export function renderSettlement(from) {
   const s = settlement({ setup: state.setup, entries: state.entries, bookings: state.bookings, from, today: today() });
   if (!s.usage.length) return '';
@@ -71,6 +88,8 @@ export function renderStats() {
       const s = carStats(state.entries, c.id, from);
       const u = unit(c.id);
       const fmt = (v, suffix) => (v == null ? '–' : `${num.format(v)} ${suffix}`);
+      const series = consumptionSeries(state.entries, c.id, isCombustion(c.id)).filter((p) => p.date >= from);
+      const vals = series.map((p) => p.value);
       return `
         <section class="card car-card cc"${cc(c.id)}>
           <h3>${esc(c.name)}</h3>
@@ -81,11 +100,14 @@ export function renderStats() {
             <li><span>${isCombustion(c.id) ? 'Tanken' : 'Laden'}</span><span>${eur.format(s.fuelCost)}</span></li>
             ${s.byType.map((t) => `<li><span>${esc(t.label)}</span><span>${eur.format(t.value)}</span></li>`).join('')}
             <li><span>Ø Verbrauch</span><span>${fmt(s.consumption, `${u}/100 km`)}</span></li>
+            ${series.length ? `<li><span>Letzter Verbrauch</span><span>${fmt(vals[vals.length - 1], `${u}/100 km`)}</span></li>
+            ${series.length > 1 ? `<li><span>Min / Max</span><span>${num.format(Math.min(...vals))} / ${fmt(Math.max(...vals), `${u}/100 km`)}</span></li>` : ''}` : ''}
             <li><span>Ø Energiekosten</span><span>${s.costPer100 == null ? '–' : `${eur.format(s.costPer100)} /100 km`}</span></li>
             <li><span>Ø Preis</span><span>${s.avgPrice == null ? '–' : `${num.format(s.avgPrice)} €/${u}`}</span></li>
           </ul>
           ${isCombustion(c.id) ? '<p class="hint">Verbrauch stimmt nur, wenn jedes Mal vollgetankt wurde.</p>' : ''}
           ${s.fuelCount === 1 ? '<p class="muted small">Verbrauch ab zwei Tank-/Ladeeinträgen.</p>' : ''}
+          ${series.length > 1 ? `<h4>Verbrauch je ${isCombustion(c.id) ? 'Tankfüllung' : 'Ladung'}</h4>${lineChart(series, c.id, u)}` : ''}
           <h4>Kosten pro Monat</h4>
           ${barChart(s.months, c.id)}
         </section>`;

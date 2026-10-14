@@ -1,5 +1,5 @@
 import { setBookingsBatch } from '../firebase.js';
-import { ALL, dueReminders } from '../lib/model.js';
+import { ALL, bookingConflict, dueReminders } from '../lib/model.js';
 import { addDays, esc, fmtDate, fmtDateLong, isoDate, mondayOf, pad, shortRange, weekNumber } from '../lib/util.js';
 import { render } from '../render.js';
 import { carName, carOf, cars, cc, pc, people, personName, prefs, state } from '../state.js';
@@ -143,8 +143,10 @@ export function renderDayDialog(iso) {
           const cur = bookingFor(iso, c.id)?.driver || '';
           const opts = [...people().map((p) => [p.id, p.name]), [ALL, personName(ALL)], ['', 'frei']];
           if (cur && cur !== ALL && !people().some((p) => p.id === cur)) opts.unshift([cur, cur]);
+          const b = bookingFor(iso, c.id);
+          const by = b && b.updatedBy && b.updatedBy !== state.name && b.updatedBy !== b.driver ? ` <small class="muted">eingetragen von ${esc(personName(b.updatedBy))}</small>` : '';
           return `<fieldset>
-            <legend>${esc(c.name)}</legend>
+            <legend>${esc(c.name)}${by}</legend>
             <div class="seg">
               ${opts.map(([v, l]) => `
                 <label class="seg-opt${v ? ' pc' : ''}"${v ? pc(v) : ''}><input type="radio" name="${c.id}" value="${v}" ${cur === v ? 'checked' : ''}><span>${esc(l)}</span></label>`).join('')}
@@ -171,9 +173,17 @@ export function updateDayWarning(form) {
 
 export function saveDayCar(form, car) {
   const iso = form.dataset.day;
-  const driver = new FormData(form).get(car) || null;
-  const prev = bookingFor(iso, car)?.driver || null;
+  const driver = /** @type {string | null} */ (new FormData(form).get(car)) || null;
+  const booking = bookingFor(iso, car);
+  const prev = booking?.driver || null;
   if (prev === driver) return;
+  const other = bookingConflict(booking, driver, state.name);
+  if (other && !confirm(`${carName(car)} ist am ${fmtDate(iso)} schon für ${personName(other)} gebucht. Überschreiben?`)) {
+    const input = form.querySelector(`input[name="${car}"][value="${prev}"]`);
+    if (input) input.checked = true;
+    updateDayWarning(form);
+    return;
+  }
   const err = (e) => toast('Fehler: ' + e.message);
   setBookingsBatch(state.code, [{ date: iso, car, driver }], state.name).catch(err);
   toast(`${carName(car)} ${fmtDate(iso)}: ${driver ? personName(driver) : 'frei'}`, {
@@ -193,6 +203,9 @@ export function copyWeek() {
     }
   }
   if (!changes.length) return toast('Folgewoche ist bereits identisch');
+  const conflicts = changes.filter((ch) => bookingConflict(bookingFor(ch.date, ch.car), ch.driver, state.name));
+  if (conflicts.length && !confirm(`${conflicts.length} Buchung${conflicts.length > 1 ? 'en' : ''} anderer Personen in der Folgewoche würde${conflicts.length > 1 ? 'n' : ''} überschrieben:\n`
+    + conflicts.map((ch) => `${fmtDate(ch.date)} ${carName(ch.car)}: ${personName(bookingFor(ch.date, ch.car).driver)}`).join('\n') + '\n\nTrotzdem kopieren?')) return;
   const undo = changes.map((ch) => ({ ...ch, driver: bookingFor(ch.date, ch.car)?.driver || null }));
   const me = state.name;
   setBookingsBatch(state.code, changes, me).catch((e) => toast('Fehler: ' + e.message));

@@ -133,6 +133,13 @@ app.addEventListener('click', (ev) => {
       toast('Darstellung zurückgesetzt', { label: 'Rückgängig', run: () => restore(before) });
       return;
     }
+    case 'delete-recurring': {
+      const rec = state.recurring.find((r) => r.id === el.dataset.id);
+      if (!rec || !confirm('Wiederholung beenden? Bereits erfasste Einträge bleiben erhalten.')) return;
+      deleteItem(state.code, 'recurring', rec.id).catch((e) => toast('Fehler: ' + e.message));
+      toast('Wiederholung beendet');
+      break;
+    }
     case 'delete-entry': {
       const entry = state.entries.find((e) => e.id === el.dataset.id);
       if (!entry) return;

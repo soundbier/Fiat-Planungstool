@@ -11,7 +11,10 @@ Vite + Vanilla JS + Firebase Firestore (offlinefähig via `persistentLocalCache`
 - Erster Start: **Neuen Haushalt erstellen** (zufälliger 24-stelliger Code via `crypto.getRandomValues`) – danach erscheint
   sofort eine **Einladung** (QR-Code/Link `https://deine-domain/#h=CODE&i=TOKEN`) für die zweite Person.
 - Danach **Wer bist du?** – Lukas oder Marie. Code und Name liegen in `localStorage`.
-- Daten: `households/{code}/bookings`, `/entries`, `/reminders`, `/members/{uid}`, `/invites/{token}`, `/meta/config`, `/meta/setup` (Personen & Autos).
+- Daten: `households/{code}/bookings`, `/entries`, `/reminders`, `/recurring`, `/members/{uid}`, `/invites/{token}`, `/meta/config`, `/meta/setup` (Personen & Autos).
+- **Wiederkehrende Kosten:** Beim Erfassen (außer Tanken/Laden) „Wiederholen“ wählen – fällige Einträge werden beim Start automatisch angelegt (`/recurring`), Beenden in der Kostenliste.
+- **Verbrauch je Tankfüllung/Ladung:** in der Kostenliste und als Verlauf in der Auswertung (Verbrenner nur zwischen Volltankungen).
+- **Buchungskonflikte:** Überschreiben einer Buchung einer anderen Person (Tagesdialog, Woche kopieren) muss bestätigt werden.
 - **Abrechnung:** Kosten je Auto werden nach gebuchten Kalendertagen (bis heute) auf die Personen verteilt und mit „Bezahlt von“ verrechnet.
 - **Nach dem Update** die neuen `firestore.rules` deployen – sonst schlagen Fristen, neue Kostenarten und Stammdaten fehl.
 
