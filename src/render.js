@@ -19,6 +19,10 @@ export async function run(fn, okMsg) {
   finally { state.busy = false; render(); }
 }
 
+// Großer Seitentitel: kleiner Titel in der Kopfzeile erst nach dem Scrollen
+const onScroll = () => document.documentElement.classList.toggle('scrolled', window.scrollY > 36);
+window.addEventListener('scroll', onScroll, { passive: true });
+
 /* ---------- Main render ---------- */
 export const TABS = [
   { id: 'calendar', label: 'Kalender', short: 'Kalender', icon: 'calendar' },
@@ -74,7 +78,7 @@ export function render() {
   const dueCount = dueReminders(state.reminders, today()).length;
   app.innerHTML = `
     <header class="topbar">
-      <h1 class="topbar-title">${esc(TABS.find((t) => t.id === state.tab).label)}</h1>
+      <span class="topbar-title" aria-hidden="true">${esc(TABS.find((t) => t.id === state.tab).label)}</span>
       <span class="topbar-right">
         <span class="sync ${state.sync}" role="status" title="${SYNC_LABEL[state.sync]}"><i aria-hidden="true"></i><span class="sync-text">${SYNC_LABEL[state.sync]}</span></span>
         <span class="me pc"${pc(state.name)}>${esc(personName(state.name))}</span>
@@ -82,7 +86,7 @@ export function render() {
     </header>
     ${state.error ? `<div class="banner" role="alert">${esc(state.error)}</div>` : ''}
     ${state.sync === 'offline' && !state.error ? `<div class="banner" role="status">Keine Verbindung zum Server – Änderungen sind nur auf diesem Gerät gespeichert und werden später übertragen.</div>` : ''}
-    <main class="content">${views[state.tab]()}</main>
+    <main class="content"><h1 class="page-title">${esc(TABS.find((t) => t.id === state.tab).label)}</h1>${views[state.tab]()}</main>
     <nav class="tabbar" aria-label="Hauptnavigation">
       ${TABS.map((t) => `<button class="tab ${t.id === state.tab ? 'active' : ''}" data-action="tab" data-tab="${t.id}"${t.id === state.tab ? ' aria-current="page"' : ''}>
         ${icon(t.icon)}<span>${t.short}</span>${t.id === 'reminders' && dueCount ? `<span class="badge" aria-label="${dueCount} fällig">${dueCount}</span>` : ''}</button>`).join('')}
@@ -102,5 +106,6 @@ export function render() {
   const entryForm = document.getElementById('entry-form');
   if (entryForm) updateEntryForm(entryForm);
   window.scrollTo(0, scroll);
+  onScroll();
   restoreFocus(prevFocus);
 }
