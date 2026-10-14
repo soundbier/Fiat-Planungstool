@@ -1,6 +1,6 @@
 import './style.css';
 import qrcode from 'qrcode-generator';
-import { ensureAuth, subscribe, addItem, updateItem, deleteItem } from './firebase.js';
+import { ensureAuth, subscribe, subscribeBookings, setBookingsBatch, addItem, updateItem, deleteItem } from './firebase.js';
 
 const PEOPLE = ['Lukas', 'Marie'];
 const LS_CODE = 'autoplaner.household';
@@ -19,7 +19,7 @@ const state = {
   month: firstOfMonth(new Date()),
   selectedDay: isoDate(new Date()),
   statsYear: new Date().getFullYear(),
-  editBooking: null,
+  dayDialog: null,
   editEntry: null,
   setupStep: null,
   newCode: null,
@@ -102,18 +102,12 @@ async function shareHousehold() {
   copyText(url);
 }
 
-function overlaps(a, b) {
-  const aStart = `${a.date}T${a.startTime}`, aEnd = `${a.endDate}T${a.endTime}`;
-  const bStart = `${b.date}T${b.startTime}`, bEnd = `${b.endDate}T${b.endTime}`;
-  return aStart < bEnd && bStart < aEnd;
-}
-
 /* ---------- Data ---------- */
 
 function startSync() {
   stopSync();
   const onErr = (e) => { console.error(e); state.error = 'Synchronisation fehlgeschlagen: ' + e.message; render(); };
-  unsubs.push(subscribe(state.code, 'bookings', (d) => { state.bookings = d; render(); }, onErr));
+  unsubs.push(subscribeBookings(state.code, (d) => { state.bookings = d; render(); }, onErr));
   unsubs.push(subscribe(state.code, 'entries', (d) => { state.entries = d; render(); }, onErr));
 }
 function stopSync() {
@@ -180,10 +174,25 @@ function renderSetup() {
 
 /* ---------- Calendar ---------- */
 
-function bookingsOn(iso) {
-  return state.bookings
-    .filter((b) => b.date <= iso && (b.endDate || b.date) >= iso)
-    .sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime));
+const CARS = [
+  { id: 'fiat', name: 'Fiat 500e', short: 'F' },
+  { id: 'citroen', name: 'Citroën', short: 'C' }
+];
+const DRIVERS = { lukas: 'Lukas', marie: 'Marie' };
+
+function bookingFor(iso, car) {
+  return state.bookings.find((b) => b.date === iso && b.car === car) || null;
+}
+
+function addDays(iso, n) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return isoDate(new Date(y, m - 1, d + n));
+}
+
+function mondayOf(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  return addDays(iso, -((dt.getDay() + 6) % 7));
 }
 
 function renderCalendar() {
@@ -192,20 +201,24 @@ function renderCalendar() {
   const startOffset = (new Date(year, month, 1).getDay() + 6) % 7;
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const today = isoDate(new Date());
+  const weekStart = mondayOf(state.selectedDay);
+  const weekEnd = addDays(weekStart, 6);
   const cells = [];
   for (let i = 0; i < startOffset; i++) cells.push('<div class="day empty"></div>');
   for (let d = 1; d <= daysInMonth; d++) {
     const iso = `${year}-${pad(month + 1)}-${pad(d)}`;
-    const people = [...new Set(bookingsOn(iso).map((b) => b.person))];
-    cells.push(`<button class="day${iso === today ? ' today' : ''}${iso === state.selectedDay ? ' selected' : ''}" data-action="select-day" data-day="${iso}">
-      <span>${d}</span>
-      <span class="dots">${people.map((p) => `<i class="dot ${p.toLowerCase()}"></i>`).join('')}</span>
+    const chips = CARS.map((c) => {
+      const b = bookingFor(iso, c.id);
+      return b ? `<span class="chip ${b.driver}">${c.short} ${esc(DRIVERS[b.driver] || '')}</span>` : '';
+    }).join('');
+    const inWeek = iso >= weekStart && iso <= weekEnd;
+    cells.push(`<button class="day${iso === today ? ' today' : ''}${inWeek ? ' in-week' : ''}" data-action="open-day" data-day="${iso}">
+      <span class="day-num">${d}</span>${chips}
     </button>`);
   }
-  const list = bookingsOn(state.selectedDay);
   const title = m.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
   return `
-    <section class="card">
+    <section class="card cal">
       <div class="cal-head">
         <button class="icon-btn" data-action="month" data-delta="-1" aria-label="Vorheriger Monat">‹</button>
         <h2>${title}</h2>
@@ -213,79 +226,81 @@ function renderCalendar() {
       </div>
       <div class="weekdays">${['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map((w) => `<span>${w}</span>`).join('')}</div>
       <div class="grid">${cells.join('')}</div>
-      <div class="legend">${PEOPLE.map((p) => `<span><i class="dot ${p.toLowerCase()}"></i>${p}</span>`).join('')}</div>
+      <div class="legend">
+        <span><i class="dot lukas"></i>Lukas</span><span><i class="dot marie"></i>Marie</span>
+        <span>F = Fiat 500e · C = Citroën</span>
+      </div>
     </section>
     <section class="card">
-      <h3>${fmtDate(state.selectedDay)}</h3>
-      ${list.length ? `<ul class="list">${list.map(bookingItem).join('')}</ul>` : '<p class="muted">Keine Buchungen.</p>'}
+      <h3>Woche ${fmtDate(weekStart)} – ${fmtDate(weekEnd)}</h3>
+      <button class="btn block" data-action="copy-week">Woche kopieren → Folgewoche</button>
+      <p class="muted small">Tag antippen zum Bearbeiten. Die markierte Woche folgt dem zuletzt geöffneten Tag.</p>
     </section>
-    ${bookingForm()}`;
+    ${state.dayDialog ? renderDayDialog(state.dayDialog) : ''}`;
 }
 
-function bookingItem(b) {
-  const range = b.date === b.endDate
-    ? `${b.startTime}–${b.endTime}`
-    : `${fmtDate(b.date)} ${b.startTime} – ${fmtDate(b.endDate)} ${b.endTime}`;
-  return `<li class="item">
-    <i class="dot ${b.person.toLowerCase()}"></i>
-    <div class="grow"><strong>${esc(b.person)}</strong> <span class="muted">${esc(range)}</span>
-      ${b.note ? `<div class="note">${esc(b.note)}</div>` : ''}</div>
-    <button class="icon-btn small" data-action="edit-booking" data-id="${b.id}" aria-label="Bearbeiten">✎</button>
-    <button class="icon-btn small danger" data-action="delete-booking" data-id="${b.id}" aria-label="Löschen">✕</button>
-  </li>`;
-}
-
-function bookingForm() {
-  const b = state.editBooking || {
-    person: state.name, date: state.selectedDay, endDate: state.selectedDay,
-    startTime: '08:00', endTime: '18:00', note: ''
-  };
+function renderDayDialog(iso) {
   return `
-    <section class="card">
-      <h3>${state.editBooking ? 'Buchung bearbeiten' : 'Auto buchen'}</h3>
-      <form id="booking-form">
-        ${personSelect(b.person)}
-        <div class="row">
-          <label>Von<input type="date" name="date" value="${b.date}" required></label>
-          <label>Uhrzeit<input type="time" name="startTime" value="${b.startTime}" required></label>
-        </div>
-        <div class="row">
-          <label>Bis<input type="date" name="endDate" value="${b.endDate}" required></label>
-          <label>Uhrzeit<input type="time" name="endTime" value="${b.endTime}" required></label>
-        </div>
-        <label>Notiz<input name="note" maxlength="300" value="${esc(b.note)}" placeholder="z. B. Einkaufen, Arbeit"></label>
-        <button class="btn primary block" type="submit">${state.editBooking ? 'Speichern' : 'Buchen'}</button>
-        ${state.editBooking ? '<button class="btn link block" type="button" data-action="cancel-booking">Abbrechen</button>' : ''}
+    <div class="overlay" data-action="close-day">
+      <form class="dialog" id="day-form" data-day="${iso}">
+        <h3>${fmtDate(iso)}</h3>
+        ${CARS.map((c) => {
+          const cur = bookingFor(iso, c.id)?.driver || '';
+          return `<fieldset>
+            <legend>${c.name}</legend>
+            <div class="seg">
+              ${[['lukas', 'Lukas'], ['marie', 'Marie'], ['', 'frei']].map(([v, l]) => `
+                <label class="seg-opt ${v}"><input type="radio" name="${c.id}" value="${v}" ${cur === v ? 'checked' : ''}><span>${l}</span></label>`).join('')}
+            </div>
+          </fieldset>`;
+        }).join('')}
+        <p class="warn" id="day-warn" hidden></p>
+        <button class="btn primary block" type="submit">Speichern</button>
+        <button class="btn link block" type="button" data-action="close-day">Abbrechen</button>
       </form>
-    </section>`;
+    </div>`;
 }
 
-function personSelect(selected) {
-  return `<div class="seg" role="radiogroup">${PEOPLE.map((p) => `
-    <label class="seg-opt ${p.toLowerCase()}"><input type="radio" name="person" value="${p}" ${p === selected ? 'checked' : ''}><span>${p}</span></label>`).join('')}</div>`;
-}
-
-async function submitBooking(form) {
+function updateDayWarning(form) {
   const f = new FormData(form);
-  const data = {
-    person: f.get('person'),
-    date: f.get('date'),
-    endDate: f.get('endDate'),
-    startTime: f.get('startTime'),
-    endTime: f.get('endTime'),
-    note: String(f.get('note') || '').trim().slice(0, 300)
-  };
-  if (!PEOPLE.includes(data.person)) return toast('Bitte Person wählen');
-  if (`${data.endDate}T${data.endTime}` <= `${data.date}T${data.startTime}`) return toast('Ende muss nach dem Beginn liegen');
-  const editId = state.editBooking?.id;
-  const conflict = state.bookings.find((b) => b.id !== editId && b.person !== data.person && overlaps(b, data));
-  if (conflict && !confirm(`Überschneidung mit ${conflict.person} (${fmtDate(conflict.date)} ${conflict.startTime}). Trotzdem speichern?`)) return;
-  const op = editId ? updateItem(state.code, 'bookings', editId, data) : addItem(state.code, 'bookings', data);
-  state.editBooking = null;
-  state.selectedDay = data.date;
+  const a = f.get('fiat'), b = f.get('citroen');
+  const warn = form.querySelector('#day-warn');
+  if (a && a === b) {
+    warn.textContent = `⚠️ ${DRIVERS[a]} ist beiden Autos zugewiesen.`;
+    warn.hidden = false;
+  } else warn.hidden = true;
+}
+
+function submitDay(form) {
+  const iso = form.dataset.day;
+  const f = new FormData(form);
+  const me = state.name.toLowerCase();
+  const changes = CARS
+    .map((c) => ({ date: iso, car: c.id, driver: f.get(c.id) || null }))
+    .filter((ch) => (bookingFor(iso, ch.car)?.driver || null) !== ch.driver);
+  state.dayDialog = null;
   render();
+  if (!changes.length) return;
+  setBookingsBatch(state.code, changes, me).then(() => {}, (e) => toast('Fehler: ' + e.message));
   toast('Gespeichert');
-  op.catch((e) => toast('Fehler: ' + e.message));
+}
+
+function copyWeek() {
+  const start = mondayOf(state.selectedDay);
+  const changes = [];
+  for (let i = 0; i < 7; i++) {
+    const src = addDays(start, i), dst = addDays(start, i + 7);
+    for (const c of CARS) {
+      const driver = bookingFor(src, c.id)?.driver || null;
+      if ((bookingFor(dst, c.id)?.driver || null) !== driver) changes.push({ date: dst, car: c.id, driver });
+    }
+  }
+  if (!changes.length) return toast('Folgewoche ist bereits identisch');
+  if (!confirm(`Belegung von ${fmtDate(start)} – ${fmtDate(addDays(start, 6))} auf die Folgewoche übertragen? Bestehende Einträge dort werden überschrieben.`)) return;
+  setBookingsBatch(state.code, changes, state.name.toLowerCase()).catch((e) => toast('Fehler: ' + e.message));
+  state.selectedDay = addDays(start, 7);
+  toast('Woche kopiert');
+  render();
 }
 
 /* ---------- Fuel / Charge ---------- */
@@ -373,10 +388,7 @@ function renderStats() {
     const cost = es.reduce((s, e) => s + e.cost, 0);
     const liters = es.filter((e) => e.type === 'fuel').reduce((s, e) => s + e.amount, 0);
     const kwh = es.filter((e) => e.type === 'charge').reduce((s, e) => s + e.amount, 0);
-    const days = new Set();
-    bookings.filter((b) => b.person === p).forEach((b) => {
-      for (let d = new Date(b.date + 'T00:00'); isoDate(d) <= b.endDate; d.setDate(d.getDate() + 1)) days.add(isoDate(d));
-    });
+    const days = new Set(bookings.filter((b) => b.driver === p.toLowerCase()).map((b) => b.date));
     return { p, cost, liters, kwh, count: es.length, bookingDays: days.size, share: total ? cost / total : 0 };
   });
 
@@ -487,6 +499,9 @@ function render() {
   const active = document.activeElement;
   const focusName = active && active.form && active.name && active.type !== 'radio' ? { form: active.form.id, name: active.name, value: active.value } : null;
   if (focusName) return; // Nicht neu rendern, während der Nutzer tippt
+  // Ungespeicherte Auswahl im Tagesdialog über Re-Renders hinweg erhalten
+  const dayForm = document.getElementById('day-form');
+  const dayDraft = dayForm && dayForm.dataset.day === state.dayDialog ? Object.fromEntries(new FormData(dayForm)) : null;
   app.innerHTML = `
     <header class="topbar">
       <span>Autoplaner</span>
@@ -498,6 +513,16 @@ function render() {
       ${TABS.map((t) => `<button class="tab ${t.id === state.tab ? 'active' : ''}" data-action="tab" data-tab="${t.id}">
         <span class="tab-icon">${t.icon}</span><span>${t.label}</span></button>`).join('')}
     </nav>`;
+  if (dayDraft) {
+    const form = document.getElementById('day-form');
+    for (const [name, value] of Object.entries(dayDraft)) {
+      const input = form?.querySelector(`input[name="${name}"][value="${value}"]`);
+      if (input) input.checked = true;
+    }
+    if (form) updateDayWarning(form);
+  } else if (state.dayDialog) {
+    updateDayWarning(document.getElementById('day-form'));
+  }
   window.scrollTo(0, scroll);
 }
 
@@ -531,7 +556,7 @@ app.addEventListener('click', async (ev) => {
       return;
     case 'tab':
       state.tab = el.dataset.tab;
-      state.editBooking = null;
+      state.dayDialog = null;
       state.editEntry = null;
       document.activeElement?.blur();
       app.innerHTML = '';
@@ -542,15 +567,12 @@ app.addEventListener('click', async (ev) => {
       state.month = new Date(state.month.getFullYear(), state.month.getMonth() + Number(el.dataset.delta), 1);
       break;
     case 'year': state.statsYear += Number(el.dataset.delta); break;
-    case 'select-day': state.selectedDay = el.dataset.day; state.editBooking = null; break;
-    case 'edit-booking':
-      state.editBooking = state.bookings.find((b) => b.id === el.dataset.id) || null;
+    case 'open-day': state.selectedDay = el.dataset.day; state.dayDialog = el.dataset.day; break;
+    case 'close-day':
+      if (ev.target !== el) return; // Klicks im Dialog nicht als Overlay-Klick werten
+      state.dayDialog = null;
       break;
-    case 'cancel-booking': state.editBooking = null; break;
-    case 'delete-booking':
-      if (!confirm('Buchung löschen?')) return;
-      deleteItem(state.code, 'bookings', el.dataset.id).catch((e) => toast('Fehler: ' + e.message));
-      return;
+    case 'copy-week': copyWeek(); return;
     case 'edit-entry':
       state.editEntry = state.entries.find((e) => e.id === el.dataset.id) || null;
       document.activeElement?.blur();
@@ -568,11 +590,16 @@ app.addEventListener('click', async (ev) => {
   render();
 });
 
+app.addEventListener('change', (ev) => {
+  const form = ev.target.form;
+  if (form?.id === 'day-form') updateDayWarning(form);
+});
+
 app.addEventListener('submit', (ev) => {
   ev.preventDefault();
   const form = ev.target;
   document.activeElement?.blur();
-  if (form.id === 'booking-form') submitBooking(form);
+  if (form.id === 'day-form') submitDay(form);
   else if (form.id === 'entry-form') submitEntry(form);
   else if (form.id === 'join-form' || form.id === 'switch-form') {
     const code = String(new FormData(form).get('code') || '').trim();

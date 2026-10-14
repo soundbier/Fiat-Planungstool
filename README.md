@@ -1,6 +1,6 @@
 # Autoplaner
 
-PWA für Lukas und Marie zum gemeinsamen Planen des Autos: Kalender-Buchungen, Tanken/Laden erfassen, Auswertung der Kosten.
+PWA für Lukas und Marie zum gemeinsamen Planen des Autos: Kalender für Fiat 500e und Citroën, Tanken/Laden erfassen, Auswertung der Kosten.
 Vite + Vanilla JS + Firebase Firestore (offlinefähig via `persistentLocalCache`). Kein Account nötig – Zugriff über einen geheimen Haushaltscode.
 
 ## Funktionsweise
@@ -39,7 +39,8 @@ npm run dev
 Die Regeln:
 - erlauben Zugriff nur für angemeldete Nutzer (`request.auth != null`) und nur unterhalb von `households/{code}/bookings` bzw. `/entries`,
 - verbieten jeden Zugriff auf `households` selbst (kein `list` → Codes sind nicht auslesbar),
-- validieren alle Felder (Person `Lukas`/`Marie`, Typ `fuel`/`charge`, Datums-/Zeitformate, Zahlenbereiche, Notizlänge).
+- prüfen bei Buchungen, dass die Dokument-ID `{date}_{car}` entspricht,
+- validieren alle Felder (Fahrer/Person, Auto `fiat`/`citroen`, Typ `fuel`/`charge`, Datums-/Zeitformate, Zahlenbereiche, Notizlänge).
 
 Die Abfrage sortiert nach `date`; dafür genügt der automatische Einzelfeld-Index.
 
@@ -65,15 +66,15 @@ Seite in Safari öffnen → Teilen → **Zum Home-Bildschirm**.
 
 ## Datenmodell
 
-`bookings`
+`bookings` – Dokument-ID `{YYYY-MM-DD}_{car}` (ein Dokument pro Tag und Auto; "frei" = Dokument gelöscht)
 
 | Feld | Typ |
 |---|---|
-| person | `"Lukas"` \| `"Marie"` |
-| date, endDate | `"YYYY-MM-DD"` |
-| startTime, endTime | `"HH:MM"` |
-| note | string (≤ 300) |
-| createdAt | Server-Timestamp |
+| date | `"YYYY-MM-DD"` |
+| car | `"fiat"` (Fiat 500e) \| `"citroen"` (Citroën) |
+| driver | `"lukas"` \| `"marie"` |
+| updatedBy | `"lukas"` \| `"marie"` |
+| updatedAt | Server-Timestamp |
 
 `entries`
 

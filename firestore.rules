@@ -27,14 +27,15 @@ service cloud.firestore {
         : request.resource.data.createdAt == resource.data.createdAt;
     }
 
-    function validBooking(d) {
-      return d.keys().hasOnly(['person', 'date', 'endDate', 'startTime', 'endTime', 'note', 'createdAt'])
-        && d.keys().hasAll(['person', 'date', 'endDate', 'startTime', 'endTime', 'note', 'createdAt'])
-        && validPerson(d.person)
-        && validDate(d.date) && validDate(d.endDate) && d.endDate >= d.date
-        && validTime(d.startTime) && validTime(d.endTime)
-        && (d.endDate > d.date || d.endTime > d.startTime)
-        && validNote(d.note);
+    function validBooking(d, id) {
+      return d.keys().hasOnly(['date', 'car', 'driver', 'updatedBy', 'updatedAt'])
+        && d.keys().hasAll(['date', 'car', 'driver', 'updatedBy', 'updatedAt'])
+        && validDate(d.date)
+        && d.car in ['fiat', 'citroen']
+        && d.driver in ['lukas', 'marie']
+        && d.updatedBy in ['lukas', 'marie']
+        && d.updatedAt == request.time
+        && id == d.date + '_' + d.car;
     }
 
     function validEntry(d) {
@@ -56,7 +57,7 @@ service cloud.firestore {
       match /bookings/{id} {
         allow get, list: if signedIn() && validCode(code);
         allow create, update: if signedIn() && validCode(code)
-          && validBooking(request.resource.data) && createdAtOk();
+          && validBooking(request.resource.data, id);
         allow delete: if signedIn() && validCode(code);
       }
 
