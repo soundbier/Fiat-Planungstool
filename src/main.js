@@ -1,6 +1,10 @@
 import './style.css';
 import qrcode from 'qrcode-generator';
-import { ensureAuth, subscribeEntries, subscribeBookings, setBookingsBatch, addItem, deleteItem } from './firebase.js';
+import {
+  auth, ensureAuth, subscribeEntries, subscribeBookings, setBookingsBatch, addItem, deleteItem,
+  isMember, joinHousehold, createHousehold, setLocked, subscribeConfig, subscribeMembers, removeMember,
+  createInvite, revokeInvites, rotateHousehold
+} from './firebase.js';
 
 const PEOPLE = ['Lukas', 'Marie'];
 const DRIVERS = Object.fromEntries(PEOPLE.map((p) => [p.toLowerCase(), p]));
@@ -11,6 +15,7 @@ const CARS = [
 const LS_CODE = 'autoplaner.household';
 const LS_NAME = 'autoplaner.name';
 const LS_PREFS = 'autoplaner.prefs';
+const LS_MEMBER = 'autoplaner.member';
 const SWATCHES = ['#2c5d8f', '#a8324a', '#1f7a6d', '#7a4bb0', '#c2581b', '#3b7d2a', '#b0477f', '#4a4a48'];
 const DEFAULT_PREFS = { theme: 'system', scheme: 'warm', size: 'normal', startTab: 'calendar', colors: { lukas: '#2c5d8f', marie: '#a8324a' } };
 const CODE_RE = /^[A-Za-z0-9]{20,64}$/;
@@ -24,6 +29,11 @@ const state = {
   tab: 'calendar',
   bookings: [],
   entries: [],
+  members: [],
+  config: { locked: false },
+  invite: null,
+  showCode: false,
+  busy: false,
   month: firstOfMonth(new Date()),
   selectedDay: isoDate(new Date()),
   statsPeriod: 'year',
@@ -32,7 +42,6 @@ const state = {
   copyWeek: null,
   entrySheet: false,
   setupStep: null,
-  newCode: null,
   error: null
 };
 let unsubs = [];
@@ -93,8 +102,48 @@ function generateCode(len = 24) {
   return out.join('');
 }
 
-function shareLink(code) {
-  return `${location.origin}/?h=${encodeURIComponent(code)}`;
+// Fragment statt Query: wird nie an den Server geschickt (keine Logs, kein Referrer).
+function inviteLink(code, token) {
+  return `${location.origin}/#h=${encodeURIComponent(code)}&i=${encodeURIComponent(token)}`;
+}
+
+function parseInvite(text) {
+  const t = String(text || '').trim();
+  if (CODE_RE.test(t)) return { code: t, invite: null };
+  try {
+    const u = new URL(t, location.origin);
+    const p = new URLSearchParams(u.hash.slice(1) || u.search);
+    const code = p.get('h');
+    const invite = p.get('i');
+    if (code && CODE_RE.test(code)) return { code, invite: invite && CODE_RE.test(invite) ? invite : null };
+  } catch {}
+  return null;
+}
+
+function deviceLabel() {
+  const ua = navigator.userAgent;
+  const os = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android'
+    : /Mac/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows' : /Linux/.test(ua) ? 'Linux' : 'Gerät';
+  const br = /Edg\//.test(ua) ? 'Edge' : /Firefox|FxiOS/.test(ua) ? 'Firefox' : /Chrome|CriOS/.test(ua) ? 'Chrome'
+    : /Safari/.test(ua) ? 'Safari' : 'Browser';
+  return `${os} · ${br}`;
+}
+
+const INVITE_HOURS = 24;
+async function newInvite() {
+  const token = generateCode(24);
+  await createInvite(state.code, token, INVITE_HOURS);
+  state.invite = { link: inviteLink(state.code, token), expires: Date.now() + INVITE_HOURS * 3600 * 1000 };
+  return state.invite;
+}
+
+function fmtTime(ms) {
+  return new Date(ms).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+function errText(e) {
+  if (e?.code === 'permission-denied') return 'Kein Zugriff. Der Haushalt ist gesperrt, die Einladung ist abgelaufen/benutzt oder dieses Gerät wurde entfernt.';
+  return e?.message || String(e);
 }
 
 function qrSvg(text) {
@@ -137,7 +186,9 @@ async function copyText(text) {
 }
 
 async function shareHousehold() {
-  const url = shareLink(state.code);
+  let url;
+  try { url = (await newInvite()).link; } catch (e) { toast('Fehler: ' + errText(e)); return; }
+  render();
   if (navigator.share) {
     try { await navigator.share({ title: 'Autoplaner', text: 'Tritt unserem Autoplaner-Haushalt bei:', url }); return; }
     catch (e) { if (e.name === 'AbortError') return; }
@@ -150,7 +201,12 @@ async function shareHousehold() {
 let offlineTimer = null;
 function startSync() {
   stopSync();
-  const onErr = (e) => { console.error(e); state.error = 'Synchronisation fehlgeschlagen: ' + e.message; render(); };
+  const onErr = (e) => {
+    console.error(e);
+    if (e.code === 'permission-denied') localStorage.removeItem(LS_MEMBER);
+    state.error = 'Synchronisation fehlgeschlagen: ' + errText(e);
+    render();
+  };
   const meta = { bookings: null, entries: null };
   const onMeta = (key, m) => {
     meta[key] = m;
@@ -161,6 +217,9 @@ function startSync() {
   };
   unsubs.push(subscribeBookings(state.code, (d, m) => { state.bookings = d; onMeta('bookings', m); render(); }, onErr));
   unsubs.push(subscribeEntries(state.code, (d, m) => { state.entries = d; onMeta('entries', m); render(); }, onErr));
+  const quiet = (e) => console.warn(e);
+  unsubs.push(subscribeConfig(state.code, (c) => { state.config = c; render(); }, quiet));
+  unsubs.push(subscribeMembers(state.code, (m) => { state.members = m; render(); }, quiet));
 }
 function stopSync() {
   clearTimeout(offlineTimer);
@@ -169,15 +228,61 @@ function stopSync() {
   unsubs = [];
   state.bookings = [];
   state.entries = [];
+  state.members = [];
+  state.config = { locked: false };
+  state.invite = null;
+  state.showCode = false;
 }
 
 function setHousehold(code) {
+  stopSync();
+  state.error = null;
   state.code = code;
   localStorage.setItem(LS_CODE, code);
   startSync();
 }
+// Stellt sicher, dass dieses Gerät Mitglied ist (Beitritt ggf. mit Einladung), dann Sync starten.
+async function enterHousehold(code, invite) {
+  const uid = auth.currentUser.uid;
+  if (localStorage.getItem(LS_MEMBER) !== `${code}:${uid}`) {
+    let member = false;
+    try { member = await isMember(code, uid); }
+    catch (e) { if (e.code !== 'unavailable') throw e; member = !invite; }
+    if (!member) await joinHousehold(code, uid, deviceLabel(), invite);
+    localStorage.setItem(LS_MEMBER, `${code}:${uid}`);
+  }
+  setHousehold(code);
+}
+
+async function createNewHousehold() {
+  const code = generateCode(24);
+  await createHousehold(code, auth.currentUser.uid, deviceLabel(), true);
+  localStorage.setItem(LS_MEMBER, `${code}:${auth.currentUser.uid}`);
+  setHousehold(code);
+  await newInvite();
+}
+
+async function rotateCode() {
+  const newCode = generateCode(24);
+  await rotateHousehold(state.code, newCode, auth.currentUser.uid, deviceLabel());
+  localStorage.setItem(LS_MEMBER, `${newCode}:${auth.currentUser.uid}`);
+  setHousehold(newCode);
+}
+
+// Asynchrone Aktion mit Sperre gegen Doppelklicks
+async function run(fn, okMsg) {
+  if (state.busy) return;
+  state.busy = true;
+  render();
+  try { await fn(); if (okMsg) toast(okMsg); }
+  catch (e) { console.error(e); toast('Fehler: ' + errText(e)); }
+  finally { state.busy = false; render(); }
+}
+
 function leaveHousehold() {
+  if (state.code && auth.currentUser) removeMember(state.code, auth.currentUser.uid).catch(() => {});
   stopSync();
+  localStorage.removeItem(LS_MEMBER);
   localStorage.removeItem(LS_CODE);
   localStorage.removeItem(LS_NAME);
   state.code = null;
@@ -204,23 +309,17 @@ function renderSetup() {
         <button class="btn primary block lg" data-action="create">Neuen Haushalt erstellen</button>
         <button class="btn block lg" data-action="goto-join">Bestehendem Haushalt beitreten</button>
       </div>
-      <p class="muted small setup-foot">Kein Konto nötig – der Zugang erfolgt über einen geheimen Haushaltscode.</p>`;
+      ${state.error ? `<p class="error">${esc(state.error)}</p>` : ''}
+      <p class="muted small setup-foot">Kein Konto nötig – der Zugang erfolgt über eine persönliche Einladung.</p>`;
   } else if (step === 'created') {
-    const link = shareLink(state.newCode);
     body = `
       ${dots}
       <div class="setup-hero compact">
         <h1>Haushalt erstellt</h1>
-        <p class="muted">Teile den QR-Code oder Link mit der zweiten Person.</p>
+        <p class="muted">Lass die zweite Person den QR-Code scannen oder schick ihr den Link.</p>
       </div>
       <div class="setup-card">
-        <div class="qr">${qrSvg(link)}</div>
-        <div class="code-box">${esc(state.newCode)}</div>
-        <div class="btn-row">
-          <button class="btn" data-action="copy" data-text="${esc(state.newCode)}">Code kopieren</button>
-          <button class="btn" data-action="copy" data-text="${esc(link)}">Link kopieren</button>
-        </div>
-        <p class="muted small">Wer den Code hat, hat Zugriff – nur vertrauenswürdig teilen.</p>
+        ${inviteBox()}
       </div>
       <button class="btn primary block lg" data-action="confirm-created">Weiter</button>`;
   } else if (step === 'join') {
@@ -228,14 +327,14 @@ function renderSetup() {
       ${dots}
       <div class="setup-hero compact">
         <h1>Haushalt beitreten</h1>
-        <p class="muted">Füge den Code ein, den du erhalten hast – oder scanne den QR-Code mit der Kamera.</p>
+        <p class="muted">Füge den Einladungslink ein, den du erhalten hast – oder scanne den QR-Code mit der Kamera.</p>
       </div>
       <form id="join-form" class="setup-card">
-        <label>Haushaltscode
-          <input name="code" autocomplete="off" autocapitalize="off" spellcheck="false" required placeholder="Code einfügen">
+        <label>Einladungslink oder Code
+          <input name="code" autocomplete="off" autocapitalize="off" spellcheck="false" required placeholder="Link einfügen">
         </label>
         ${state.error ? `<p class="error">${esc(state.error)}</p>` : ''}
-        <button class="btn primary block lg" type="submit">Beitreten</button>
+        <button class="btn primary block lg" type="submit" ${state.busy ? 'disabled' : ''}>Beitreten</button>
       </form>
       <button class="btn link block" data-action="back-start">Zurück</button>`;
   } else if (step === 'name') {
@@ -251,6 +350,18 @@ function renderSetup() {
       </div>`;
   }
   app.innerHTML = `<main class="setup">${body}</main>`;
+}
+
+function inviteBox() {
+  const inv = state.invite;
+  if (!inv) return '';
+  return `
+    <div class="qr">${qrSvg(inv.link)}</div>
+    <div class="btn-row">
+      <button class="btn" data-action="copy" data-text="${esc(inv.link)}">Link kopieren</button>
+      ${navigator.share ? `<button class="btn" data-action="share-invite">Teilen</button>` : ''}
+    </div>
+    <p class="muted small">Einmalig nutzbar, gültig bis ${esc(fmtTime(inv.expires))}. Nur persönlich an vertraute Personen weitergeben – nicht in Gruppen posten.</p>`;
 }
 
 /* ---------- Calendar ---------- */
@@ -558,7 +669,7 @@ function entryItem(e) {
       <strong>${eur.format(e.cost)}</strong> <span class="muted">${num.format(e.amount)} ${unit}${per}</span>
       <div class="note">${esc(carName(e.car))} · ${fmtDate(e.date)} · ${num.format(e.odometer)} km${e.car === 'citroen' ? (e.full ? ' · voll' : ' · teilweise') : ''}${who ? ` · <i class="dot ${e.createdBy}"></i>${who}` : ''}${e.note ? ` · ${esc(e.note)}` : ''}</div>
     </div>
-    <button class="icon-btn small danger" data-action="delete-entry" data-id="${e.id}" aria-label="Löschen">✕</button>
+    <button class="icon-btn small danger" data-action="delete-entry" data-id="${esc(e.id)}" aria-label="Löschen">✕</button>
   </li>`;
 }
 
@@ -714,7 +825,6 @@ function segPref(key, options, cur) {
 }
 
 function renderSettings() {
-  const link = shareLink(state.code);
   const week = mondayOf(isoDate(new Date()));
   return `
     <section class="card">
@@ -749,16 +859,36 @@ function renderSettings() {
       <p class="muted small">${state.entries.length} Einträge · ${state.bookings.length} Kalender-Einteilungen</p>
     </section>
     <section class="card">
-      <h3>Haushalt</h3>
-      <div class="code-box">${esc(state.code)}</div>
-      <button class="btn block" data-action="copy" data-text="${esc(state.code)}">Code kopieren</button>
-      <button class="btn block" data-action="share">Einladungslink teilen</button>
-      <div class="qr">${qrSvg(link)}</div>
+      <h3>Einladen</h3>
+      ${state.invite ? inviteBox() : ''}
+      <button class="btn block" data-action="new-invite" ${state.busy ? 'disabled' : ''}>${state.invite ? 'Neue Einladung erstellen' : 'Einladung erstellen'}</button>
+      <button class="btn link block" data-action="revoke-invites" ${state.busy ? 'disabled' : ''}>Offene Einladungen widerrufen</button>
+      <p class="muted small">Einladungen gelten ${INVITE_HOURS} h und nur für ein Gerät.</p>
+    </section>
+    <section class="card">
+      <h3>Geräte</h3>
+      <label class="check"><input type="checkbox" data-action="toggle-lock" ${state.config.locked ? 'checked' : ''} ${state.busy ? 'disabled' : ''}>
+        Beitritt nur mit Einladung</label>
+      <p class="muted small">${state.config.locked ? 'Der Code allein reicht nicht, um beizutreten.' : 'Achtung: Jeder mit dem Code kann beitreten.'}</p>
+      <ul class="device-list">${state.members.map((m) => {
+        const me = m.id === auth.currentUser?.uid;
+        const since = m.joinedAt?.toMillis ? fmtTime(m.joinedAt.toMillis()) : '';
+        return `<li><span>${esc(m.device || 'Gerät')}${me ? ' <b>(dieses Gerät)</b>' : ''}<br><span class="muted small">seit ${esc(since)}</span></span>
+          ${me ? '' : `<button class="btn danger btn-sm" data-action="remove-member" data-id="${esc(m.id)}" ${state.busy ? 'disabled' : ''}>Entfernen</button>`}</li>`;
+      }).join('')}</ul>
+    </section>
+    <section class="card">
+      <h3>Haushaltscode</h3>
+      ${state.showCode ? `<div class="code-box">${esc(state.code)}</div>
+      <button class="btn block" data-action="copy" data-text="${esc(state.code)}">Code kopieren</button>`
+      : `<button class="btn block" data-action="show-code">Code anzeigen</button>`}
+      <button class="btn danger block" data-action="rotate-code" ${state.busy ? 'disabled' : ''}>Code erneuern</button>
+      <p class="muted small">Falls der Code in falsche Hände geraten ist: Alle Daten ziehen in einen neuen Haushalt um, alle anderen Geräte verlieren den Zugriff und brauchen eine neue Einladung.</p>
     </section>
     <section class="card">
       <h3>Anderem Haushalt beitreten</h3>
       <form id="switch-form">
-        <label>Haushaltscode<input name="code" autocomplete="off" autocapitalize="off" spellcheck="false" required></label>
+        <label>Einladungslink oder Code<input name="code" autocomplete="off" autocapitalize="off" spellcheck="false" required></label>
         <button class="btn block" type="submit">Wechseln</button>
       </form>
     </section>
@@ -843,14 +973,37 @@ app.addEventListener('click', (ev) => {
   const { action } = el.dataset;
   switch (action) {
     case 'create':
-      state.newCode = generateCode(24);
-      state.setupStep = 'created';
-      break;
+      state.error = null;
+      run(async () => {
+        try { await createNewHousehold(); state.setupStep = 'created'; }
+        catch (e) { state.error = 'Erstellen fehlgeschlagen: ' + errText(e); }
+      });
+      return;
     case 'confirm-created':
-      setHousehold(state.newCode);
-      state.newCode = null;
       state.setupStep = 'name';
       break;
+    case 'reload': location.reload(); return;
+    case 'share-invite':
+      navigator.share({ title: 'Autoplaner', text: 'Einladung zum Autoplaner:', url: state.invite.link }).catch(() => {});
+      return;
+    case 'new-invite': run(newInvite); return;
+    case 'revoke-invites':
+      run(async () => { const n = await revokeInvites(state.code); state.invite = null; toast(`${n} Einladung(en) widerrufen`); });
+      return;
+    case 'toggle-lock': {
+      const locked = el.checked;
+      run(() => setLocked(state.code, locked), locked ? 'Haushalt gesperrt' : 'Beitritt mit Code erlaubt');
+      return;
+    }
+    case 'remove-member':
+      if (confirm('Dieses Gerät entfernen? Es verliert sofort den Zugriff.')) run(() => removeMember(state.code, el.dataset.id), 'Gerät entfernt');
+      return;
+    case 'show-code': state.showCode = true; break;
+    case 'rotate-code':
+      if (confirm('Code wirklich erneuern? Alle anderen Geräte verlieren den Zugriff und brauchen eine neue Einladung.')) {
+        run(rotateCode, 'Neuer Code aktiv – jetzt neue Einladung erstellen');
+      }
+      return;
     case 'goto-join': state.error = null; state.setupStep = 'join'; break;
     case 'back-start': state.error = null; state.setupStep = 'start'; break;
     case 'set-name':
@@ -940,17 +1093,23 @@ app.addEventListener('submit', (ev) => {
   if (form.id === 'day-form') return;
   if (form.id === 'entry-form') submitEntry(form);
   else if (form.id === 'join-form' || form.id === 'switch-form') {
-    const code = String(new FormData(form).get('code') || '').trim();
-    if (!CODE_RE.test(code)) {
-      if (form.id === 'join-form') { state.error = 'Ungültiger Code (mind. 20 Zeichen, nur Buchstaben und Ziffern).'; render(); }
-      else toast('Ungültiger Code');
+    const parsed = parseInvite(new FormData(form).get('code'));
+    const isJoin = form.id === 'join-form';
+    if (!parsed) {
+      if (isJoin) { state.error = 'Ungültiger Link oder Code.'; render(); }
+      else toast('Ungültiger Link oder Code');
       return;
     }
     state.error = null;
-    setHousehold(code);
-    if (form.id === 'join-form') state.setupStep = 'name';
-    else { toast('Haushalt gewechselt'); state.tab = 'calendar'; }
-    render();
+    run(async () => {
+      try {
+        await enterHousehold(parsed.code, parsed.invite);
+        if (isJoin) state.setupStep = 'name';
+        else { toast('Haushalt gewechselt'); state.tab = 'calendar'; }
+      } catch (e) {
+        if (isJoin) state.error = errText(e); else throw e;
+      }
+    });
   }
 });
 
@@ -962,15 +1121,16 @@ app.addEventListener('focusout', () => setTimeout(() => {
 /* ---------- Boot ---------- */
 
 async function boot() {
-  const params = new URLSearchParams(location.search);
-  const linkCode = params.get('h');
-  if (linkCode) history.replaceState(null, '', location.pathname);
+  // Neues Format: /#h=CODE&i=TOKEN; altes /?h=CODE wird weiter akzeptiert.
+  const link = parseInvite(location.href);
+  const linkCode = link?.code;
+  if (location.hash || location.search) history.replaceState(null, '', location.pathname);
 
   try {
     await ensureAuth();
   } catch (e) {
     app.innerHTML = `<main class="setup"><h1>Verbindung fehlgeschlagen</h1><p class="error">${esc(e.message)}</p>
-      <button class="btn primary block" onclick="location.reload()">Erneut versuchen</button></main>`;
+      <button class="btn primary block" data-action="reload">Erneut versuchen</button></main>`;
     return;
   }
 
@@ -979,7 +1139,13 @@ async function boot() {
 
   if (linkCode && CODE_RE.test(linkCode) && linkCode !== storedCode) {
     if (!storedCode || confirm('Diesem Haushalt beitreten? Der aktuelle Haushalt wird verlassen.')) {
-      setHousehold(linkCode);
+      try {
+        await enterHousehold(linkCode, link.invite);
+      } catch (e) {
+        state.error = 'Beitritt fehlgeschlagen: ' + errText(e);
+        state.setupStep = 'start';
+        return render();
+      }
       state.name = PEOPLE.includes(storedName) ? storedName : null;
       state.setupStep = state.name ? null : 'name';
       return render();
@@ -987,7 +1153,9 @@ async function boot() {
   }
 
   if (storedCode && CODE_RE.test(storedCode)) {
-    setHousehold(storedCode);
+    // Bestehende Haushalte (vor Einführung der Mitgliedschaft) treten automatisch bei, solange nicht gesperrt.
+    try { await enterHousehold(storedCode, null); }
+    catch (e) { setHousehold(storedCode); state.error = 'Kein Zugriff: ' + errText(e); }
     if (PEOPLE.includes(storedName)) state.name = storedName;
     else state.setupStep = 'name';
   } else {
