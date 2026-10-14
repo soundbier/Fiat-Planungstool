@@ -84,7 +84,10 @@
     color-scheme: light;
   }
 }
-:root[data-size="large"] body { font-size: 18px; }
+:root[data-size="large"] {
+  --fs-xs: 13px; --fs-sm: 15px; --fs-md: 17px; --fs-base: 18px;
+  --fs-lg: 19px; --fs-xl: 29px; --fs-xxl: 33px;
+}
 
 /* ==========================================================================
    Basis
