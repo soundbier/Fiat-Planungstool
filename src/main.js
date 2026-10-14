@@ -10,6 +10,9 @@ const CARS = [
 ];
 const LS_CODE = 'autoplaner.household';
 const LS_NAME = 'autoplaner.name';
+const LS_PREFS = 'autoplaner.prefs';
+const SWATCHES = ['#2c5d8f', '#a8324a', '#1f7a6d', '#7a4bb0', '#c2581b', '#3b7d2a', '#b0477f', '#4a4a48'];
+const DEFAULT_PREFS = { theme: 'system', scheme: 'warm', size: 'normal', startTab: 'calendar', colors: { lukas: '#2c5d8f', marie: '#a8324a' } };
 const CODE_RE = /^[A-Za-z0-9]{20,64}$/;
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
 
@@ -33,6 +36,29 @@ const state = {
   error: null
 };
 let unsubs = [];
+
+function loadPrefs() {
+  try {
+    const p = JSON.parse(localStorage.getItem(LS_PREFS)) || {};
+    return { ...DEFAULT_PREFS, ...p, colors: { ...DEFAULT_PREFS.colors, ...p.colors } };
+  } catch { return { ...DEFAULT_PREFS, colors: { ...DEFAULT_PREFS.colors } }; }
+}
+const prefs = loadPrefs();
+function applyPrefs() {
+  const root = document.documentElement;
+  if (prefs.theme === 'system') delete root.dataset.theme; else root.dataset.theme = prefs.theme;
+  if (prefs.scheme === 'warm') delete root.dataset.scheme; else root.dataset.scheme = prefs.scheme;
+  if (prefs.size === 'normal') delete root.dataset.size; else root.dataset.size = prefs.size;
+  for (const [k, v] of Object.entries(prefs.colors)) root.style.setProperty(`--${k}`, v);
+}
+function setPref(key, value) {
+  if (key.startsWith('color-')) prefs.colors[key.slice(6)] = value;
+  else prefs[key] = value;
+  try { localStorage.setItem(LS_PREFS, JSON.stringify(prefs)); } catch {}
+  applyPrefs();
+}
+applyPrefs();
+if (['calendar', 'entries', 'stats'].includes(prefs.startTab)) state.tab = prefs.startTab;
 
 /* ---------- Helpers ---------- */
 
@@ -357,6 +383,41 @@ function copyWeek() {
   });
 }
 
+function resetWeek() {
+  const start = mondayOf(isoDate(new Date()));
+  const undo = [];
+  for (let i = 0; i < 7; i++) {
+    const date = addDays(start, i);
+    for (const c of CARS) {
+      const driver = bookingFor(date, c.id)?.driver;
+      if (driver) undo.push({ date, car: c.id, driver });
+    }
+  }
+  if (!undo.length) return toast('Aktuelle Woche ist bereits leer');
+  if (!confirm(`Alle Einträge der KW ${weekNumber(start)} (${shortRange(start)}) löschen?`)) return;
+  const me = state.name.toLowerCase();
+  setBookingsBatch(state.code, undo.map((u) => ({ ...u, driver: null })), me).catch((e) => toast('Fehler: ' + e.message));
+  toast(`KW ${weekNumber(start)} zurückgesetzt`, {
+    label: 'Rückgängig',
+    run: () => setBookingsBatch(state.code, undo, me).catch((e) => toast('Fehler: ' + e.message))
+  });
+}
+
+function exportCsv() {
+  const rows = [['Datum', 'Auto', 'Kilometerstand', 'Menge', 'Einheit', 'Kosten EUR', 'Vollgetankt', 'Erfasst von', 'Notiz']];
+  for (const e of sortEntries(state.entries)) {
+    rows.push([e.date, carName(e.car), e.odometer, String(e.amount).replace('.', ','), UNIT[e.car] || '',
+      String(e.cost).replace('.', ','), e.car === 'citroen' ? (e.full ? 'ja' : 'nein') : '', DRIVERS[e.createdBy] || '', e.note || '']);
+  }
+  if (rows.length === 1) return toast('Keine Einträge zum Exportieren');
+  const csv = rows.map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = `autoplaner-${isoDate(new Date())}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
 /* ---------- Fuel / Charge ---------- */
 
 const UNIT = { fiat: 'kWh', citroen: 'L' };
@@ -609,13 +670,45 @@ function renderStats() {
 
 /* ---------- Settings ---------- */
 
+function segPref(key, options, cur) {
+  return `<div class="seg">${options.map(([v, l]) => `
+    <button class="seg-opt btn-seg ${v === cur ? 'active' : ''}" data-action="pref" data-key="${key}" data-value="${v}">${l}</button>`).join('')}</div>`;
+}
+
 function renderSettings() {
   const link = shareLink(state.code);
+  const week = mondayOf(isoDate(new Date()));
   return `
     <section class="card">
       <h3>Du bist</h3>
       <div class="seg">${PEOPLE.map((p) => `
         <button class="seg-opt btn-seg ${p.toLowerCase()} ${p === state.name ? 'active' : ''}" data-action="set-name" data-name="${p}">${p}</button>`).join('')}</div>
+    </section>
+    <section class="card">
+      <h3>Darstellung</h3>
+      <p class="set-label">Modus</p>
+      ${segPref('theme', [['system', 'System'], ['light', 'Hell'], ['dark', 'Dunkel']], prefs.theme)}
+      <p class="set-label">Farbschema</p>
+      ${segPref('scheme', [['warm', 'Warm'], ['cool', 'Kühl'], ['green', 'Grün'], ['contrast', 'Kontrast']], prefs.scheme)}
+      ${PEOPLE.map((p) => { const k = p.toLowerCase(); return `
+      <p class="set-label">Farbe ${p}</p>
+      <div class="swatches">${SWATCHES.map((c) => `
+        <button class="swatch ${prefs.colors[k] === c ? 'active' : ''}" style="background:${c}" data-action="pref" data-key="color-${k}" data-value="${c}" aria-label="Farbe ${c}"></button>`).join('')}</div>`; }).join('')}
+      <p class="set-label">Schriftgröße</p>
+      ${segPref('size', [['normal', 'Normal'], ['large', 'Groß']], prefs.size)}
+      <p class="set-label">Start-Ansicht</p>
+      ${segPref('startTab', TABS.slice(0, 3).map((t) => [t.id, t.short]), prefs.startTab)}
+      <button class="btn link block" data-action="reset-prefs">Darstellung zurücksetzen</button>
+    </section>
+    <section class="card">
+      <h3>Kalender</h3>
+      <button class="btn danger block" data-action="reset-week">Aktuelle Woche zurücksetzen</button>
+      <p class="muted small">Löscht alle Einteilungen der KW ${weekNumber(week)} (${shortRange(week)}) für beide Autos.</p>
+    </section>
+    <section class="card">
+      <h3>Daten</h3>
+      <button class="btn block" data-action="export-csv">Tank-/Ladeeinträge als CSV exportieren</button>
+      <p class="muted small">${state.entries.length} Einträge · ${state.bookings.length} Kalender-Einteilungen</p>
     </section>
     <section class="card">
       <h3>Haushalt</h3>
@@ -763,6 +856,14 @@ app.addEventListener('click', (ev) => {
       state.dayDialog = null;
       break;
     case 'copy-week': copyWeek(); return;
+    case 'reset-week': resetWeek(); return;
+    case 'export-csv': exportCsv(); return;
+    case 'pref': setPref(el.dataset.key, el.dataset.value); break;
+    case 'reset-prefs':
+      Object.assign(prefs, DEFAULT_PREFS, { colors: { ...DEFAULT_PREFS.colors } });
+      setPref('theme', prefs.theme);
+      toast('Darstellung zurückgesetzt');
+      break;
     case 'delete-entry': {
       const entry = state.entries.find((e) => e.id === el.dataset.id);
       if (!entry) return;
