@@ -9,7 +9,7 @@
   --text: light-dark(#1b1b1a, #ecebe7);
   --muted: light-dark(#6e6c67, #9b9993);
   --border: light-dark(#dddbd5, #33322f);
-  --primary: light-dark(#1b1b1a, #ecebe7);
+  --primary: light-dark(#a4502a, #e59a6c);
   --on-primary: light-dark(#fff, #141413);
   --danger: light-dark(#b3261e, #f2766b);
   --ok: light-dark(#2f7a3a, #5fbf6e);
@@ -49,7 +49,7 @@
   /* Schatten */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, .04), 0 8px 24px rgba(0, 0, 0, .05);
   --shadow-card: 0 1px 2px rgba(0, 0, 0, .05), 0 2px 12px rgba(0, 0, 0, .04);
-  --shadow-md: 0 10px 30px rgba(23, 79, 73, .28), 0 2px 6px rgba(0, 0, 0, .12);
+  --shadow-md: 0 10px 30px color-mix(in srgb, var(--primary) 28%, transparent), 0 2px 6px rgba(0, 0, 0, .12);
 
   --control-h: 44px;
   --control-h-sm: 34px;
@@ -74,15 +74,20 @@
   --bg: light-dark(#fff, #000); --card: light-dark(#fff, #000); --border: light-dark(#000, #fff);
   --muted: light-dark(#333, #ddd); --text: light-dark(#000, #fff);
   --primary: light-dark(#000, #fff); --on-primary: light-dark(#fff, #000);
+  --danger: light-dark(#a00000, #ff8a80); --ok: light-dark(#005a14, #7dff9a);
+  --hint-bg: light-dark(#fff1b8, #2a2200); --hint-text: light-dark(#000, #fff);
 }
 /* Fallback für Browser ohne light-dark() (Safari < 17.5): helles Schema */
 @supports not (color: light-dark(#000, #fff)) {
   :root, :root[data-scheme] {
     --bg: #f4f3f0; --card: #fff; --text: #1b1b1a; --muted: #6e6c67; --border: #dddbd5;
-    --primary: #1b1b1a; --on-primary: #fff; --danger: #b3261e; --ok: #2f7a3a;
+    --primary: #a4502a; --on-primary: #fff; --danger: #b3261e; --ok: #2f7a3a;
     --sync-ok: #2f8a46; --sync-wait: #c28a1b; --hint-bg: #f3ead2; --hint-text: #5c4510;
     color-scheme: light;
   }
+  :root[data-scheme="cool"] { --bg: #eef2f6; --border: #d3dbe4; --muted: #5f6b78; --text: #18202a; --primary: #1d4f86; }
+  :root[data-scheme="green"] { --bg: #eff3ee; --border: #d4ddd2; --muted: #5f6a5c; --text: #1a2118; --primary: #2f6b3a; }
+  :root[data-scheme="contrast"] { --bg: #fff; --border: #000; --muted: #333; --text: #000; --primary: #000; --danger: #a00000; --ok: #005a14; --hint-bg: #fff1b8; --hint-text: #000; }
 }
 :root[data-size="large"] {
   --fs-xs: 13px; --fs-sm: 15px; --fs-md: 17px; --fs-base: 18px;
