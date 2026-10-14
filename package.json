@@ -13,6 +13,9 @@
     "qrcode-generator": "^1.4.4"
   },
   "devDependencies": {
-    "vite": "^6.0.0"
+    "typescript": "^7.0.2",
+    "vite": "^6.0.0",
+    "vite-plugin-pwa": "^2.0.0",
+    "vitest": "^5.0.4"
   }
 }
