@@ -1,12 +1,36 @@
 import { addItem } from '../firebase.js';
-import { SHARED, TYPES, entryType, lastOdometer, odometerIssues, payerOf, sortEntries, validateEntry } from '../lib/model.js';
+import { REPEAT_OPTIONS, SHARED, TYPES, consumptionSeries, entryType, intervalLabel, recurringDue, recurringFromEntry, lastOdometer, odometerIssues, payerOf, sortEntries, validateEntry } from '../lib/model.js';
 import { esc, eur, fmtDate, isoDate, monthLabel, num, parseNum } from '../lib/util.js';
 import { render } from '../render.js';
 import { carName, carOf, cars, cc, isCombustion, pc, people, personName, state, typeLabel, unit } from '../state.js';
 import { icon, toast } from '../ui.js';
 
+function renderRecurring() {
+  if (!state.recurring.length) return '';
+  const today = isoDate(new Date());
+  return `<section class="card">
+    <h3>Wiederkehrend</h3>
+    <ul class="list">${state.recurring.map((r) => `<li class="item">
+      <span class="car-tag cc"${cc(r.car)}>${esc(carOf(r.car)?.short || '?')}</span>
+      <div class="grow">
+        <strong>${eur.format(r.cost)}</strong> <span class="muted">${esc(typeLabel(r.type))} · ${intervalLabel(r.intervalMonths)}</span>
+        <div class="note">nächste: ${fmtDate(recurringDue(r, today).next)}${r.note ? ` · ${esc(r.note)}` : ''}</div>
+      </div>
+      <button class="icon-btn small danger" data-action="delete-recurring" data-id="${esc(r.id)}" aria-label="Wiederholung beenden">${icon('trash')}</button>
+    </li>`).join('')}</ul>
+  </section>`;
+}
+
+/** Verbrauch je Tank-/Ladeeintrag (id → l bzw. kWh/100 km) */
+function consumptionById() {
+  const map = new Map();
+  for (const c of cars()) for (const p of consumptionSeries(state.entries, c.id, isCombustion(c.id))) map.set(p.id, p.value);
+  return map;
+}
+
 export function renderEntries() {
   const list = sortEntries(state.entries);
+  const cons = consumptionById();
   const groups = [];
   for (const e of list) {
     const key = e.date.slice(0, 7);
@@ -20,13 +44,14 @@ export function renderEntries() {
     ${groups.length ? groups.map((g) => `
       <section class="card">
         <div class="group-head"><h3>${monthLabel(g.key + '-01')}</h3><span class="muted">${eur.format(g.total)}</span></div>
-        <ul class="list">${g.items.map(entryItem).join('')}</ul>
+        <ul class="list">${g.items.map((e) => entryItem(e, cons.get(e.id))).join('')}</ul>
       </section>`).join('') : `
       <section class="card empty-state">
         <span class="empty-icon">${icon('fuel')}</span>
         <p><strong>Noch keine Einträge</strong></p>
         <p class="muted">Tanken, Laden, Werkstatt, Parken, Versicherung … einfach erfassen – die Auswertung rechnet den Rest.</p>
       </section>`}
+    ${renderRecurring()}
     ${state.entrySheet ? renderEntrySheet() : ''}`;
 }
 
@@ -65,6 +90,9 @@ export function renderEntrySheet() {
             ${[...people(), { id: SHARED, name: personName(SHARED) }].map((p) => `<label class="seg-opt pc"${pc(p.id)}><input type="radio" name="paidBy" value="${p.id}" ${p.id === state.name ? 'checked' : ''}><span>${esc(p.name)}</span></label>`).join('')}
           </div>
         </fieldset>
+        <label id="repeat-wrap"><span>Wiederholen</span><select name="repeat">
+          ${REPEAT_OPTIONS.map((n) => `<option value="${n}">${n ? intervalLabel(n) : 'nie'}</option>`).join('')}
+        </select></label>
         <label><span>Notiz</span><input name="note" maxlength="300" placeholder="optional"></label>
         <button class="btn primary block" type="submit">Speichern</button>
       </form>
@@ -82,6 +110,7 @@ export function updateEntryForm(form) {
   form.elements.odometer.required = fuel;
   form.querySelector('#odo-label').textContent = fuel ? 'Kilometerstand' : 'Kilometerstand (optional)';
   form.querySelector('#full-wrap').hidden = !(fuel && isCombustion(car));
+  form.querySelector('#repeat-wrap').hidden = fuel;
   updateEntryPreview(form);
 }
 
@@ -104,11 +133,12 @@ export function updateEntryPreview(form) {
   warn.hidden = !issues.length;
 }
 
-export function entryItem(e) {
+export function entryItem(e, consumption) {
   const type = entryType(e);
   const fuel = type === 'fuel';
   const per = fuel && e.amount > 0 ? ` · ${num.format(e.cost / e.amount)} €/${unit(e.car)}` : '';
-  const what = fuel ? `${num.format(e.amount)} ${unit(e.car)}${per}` : esc(typeLabel(type));
+  const cons = consumption != null ? ` · ${num.format(consumption)} ${unit(e.car)}/100 km` : '';
+  const what = fuel ? `${num.format(e.amount)} ${unit(e.car)}${per}${cons}` : esc(typeLabel(type));
   const payer = payerOf(e);
   const details = [
     esc(carName(e.car)), fmtDate(e.date),
@@ -146,9 +176,17 @@ export function submitEntry(form) {
   const data = res.data;
   const issues = data.odometer != null ? odometerIssues(state.entries, data.car, data.date, data.odometer) : [];
   if (issues.length && !confirm(`${issues.join('\n')}\n\nTrotzdem speichern?`)) return;
+  const repeat = data.type === 'fuel' ? 0 : Number(f.get('repeat')) || 0;
+  let rec = null;
+  if (repeat) {
+    const r = recurringFromEntry(data, repeat);
+    if (r.error) return toast(r.error);
+    rec = r.data;
+  }
   addItem(state.code, 'entries', data).catch((e) => toast('Fehler: ' + e.message));
+  if (rec) addItem(state.code, 'recurring', rec).catch((e) => toast('Fehler: ' + e.message));
   state.entryType = data.type;
   state.entrySheet = false;
   render();
-  toast('Gespeichert');
+  toast(rec ? `Gespeichert · ${intervalLabel(repeat)}` : 'Gespeichert');
 }

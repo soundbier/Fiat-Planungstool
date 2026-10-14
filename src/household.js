@@ -1,6 +1,6 @@
-import { auth, createHousehold, createInvite, isMember, joinHousehold, removeMember, rotateHousehold, subscribeBookings, subscribeConfig, subscribeEntries, subscribeMembers, subscribeReminders, subscribeSetup } from './firebase.js';
-import { DEFAULT_SETUP, sanitizeSetup } from './lib/model.js';
-import { generateCode } from './lib/util.js';
+import { auth, createHousehold, createInvite, isMember, joinHousehold, removeMember, rotateHousehold, subscribeBookings, subscribeConfig, subscribeEntries, subscribeMembers, subscribeRecurring, subscribeReminders, generateRecurring, subscribeSetup } from './firebase.js';
+import { DEFAULT_SETUP, recurringDue, recurringEntry, sanitizeSetup } from './lib/model.js';
+import { generateCode, isoDate } from './lib/util.js';
 import { render } from './render.js';
 import { LS_CODE, LS_MEMBER, LS_NAME, applyColors, state } from './state.js';
 import { copyText, errText, toast } from './ui.js';
@@ -85,6 +85,12 @@ export function startSync() {
   unsubs.push(subscribeEntries(state.code, (d, m) => { state.entries = d; onMeta('entries', m); render(); }, onErr));
   const quiet = (e) => console.warn(e);
   unsubs.push(subscribeReminders(state.code, (d, m) => { state.reminders = d; onMeta('reminders', m); render(); }, quiet));
+  unsubs.push(subscribeRecurring(state.code, (d, m) => {
+    state.recurring = d;
+    onMeta('recurring', m);
+    if (!m.fromCache) runRecurring();
+    render();
+  }, quiet));
   unsubs.push(subscribeSetup(state.code, (s) => {
     state.setup = sanitizeSetup(s);
     state.setupLoaded = true;
@@ -93,6 +99,21 @@ export function startSync() {
   }, quiet));
   unsubs.push(subscribeConfig(state.code, (c) => { state.config = c; render(); }, quiet));
   unsubs.push(subscribeMembers(state.code, (m) => { state.members = m; render(); }, quiet));
+}
+
+const runningRecurring = new Set();
+/** Fällige wiederkehrende Kosten als Einträge anlegen. */
+function runRecurring() {
+  const now = isoDate(new Date());
+  for (const r of state.recurring) {
+    if (runningRecurring.has(r.id)) continue;
+    const { dates, next } = recurringDue(r, now);
+    if (!dates.length) continue;
+    runningRecurring.add(r.id);
+    generateRecurring(state.code, r, dates.map((date) => ({ date, data: recurringEntry(r, date) })), next)
+      .catch((e) => console.warn('Wiederholung', e))
+      .finally(() => runningRecurring.delete(r.id));
+  }
 }
 
 export function stopSync() {
@@ -104,6 +125,7 @@ export function stopSync() {
   state.bookings = [];
   state.entries = [];
   state.reminders = [];
+  state.recurring = [];
   state.setup = structuredClone(DEFAULT_SETUP);
   state.setupLoaded = false;
   state.members = [];

@@ -88,6 +88,19 @@ service cloud.firestore {
         && validId(d.createdBy);
     }
 
+    function validRecurring(d) {
+      return d.keys().hasOnly(['car', 'type', 'cost', 'note', 'paidBy', 'start', 'next', 'intervalMonths', 'createdBy', 'createdAt'])
+        && d.keys().hasAll(['car', 'type', 'cost', 'note', 'paidBy', 'start', 'next', 'intervalMonths', 'createdBy', 'createdAt'])
+        && validId(d.car)
+        && d.type in ['service', 'parking', 'toll', 'insurance', 'tax', 'other']
+        && d.cost is number && d.cost >= 0 && d.cost < 100000
+        && d.note is string && d.note.size() <= 300
+        && validId(d.paidBy)
+        && validDate(d.start) && validDate(d.next)
+        && d.intervalMonths is int && d.intervalMonths >= 1 && d.intervalMonths <= 120
+        && validId(d.createdBy);
+    }
+
     // Kein Zugriff auf households selbst – insbesondere kein list.
     match /households/{code} {
       allow read, write: if false;
@@ -141,6 +154,15 @@ service cloud.firestore {
           && request.resource.data.createdAt == request.time;
         allow update: if isMember(code) && validReminder(request.resource.data)
           && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isMember(code);
+      }
+
+      match /recurring/{id} {
+        allow get, list: if isMember(code);
+        allow create: if isMember(code) && validRecurring(request.resource.data)
+          && request.resource.data.createdAt == request.time;
+        allow update: if isMember(code) && validRecurring(request.resource.data)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['next']);
         allow delete: if isMember(code);
       }
 

@@ -1,6 +1,6 @@
 // @ts-check
 // Fachlogik: Stammdaten, Validierung, Auswertung, Abrechnung. Ohne DOM/Firebase, daher testbar.
-import { DATE_RE, parseNum, round2, daysBetween } from './util.js';
+import { DATE_RE, parseNum, round2, daysBetween, addMonths } from './util.js';
 
 /** @typedef {import('./util.js').IsoDate} IsoDate */
 /** @typedef {{ id: string, name: string }} Person */
@@ -15,8 +15,12 @@ import { DATE_RE, parseNum, round2, daysBetween } from './util.js';
  *   cost: number, full?: boolean, note: string, createdBy: string, paidBy?: string, createdAt?: unknown
  * }} Entry
  */
-/** @typedef {{ id?: string, date: IsoDate, car: string, driver: string }} Booking */
+/** @typedef {{ id?: string, date: IsoDate, car: string, driver: string, updatedBy?: string }} Booking */
 /** @typedef {{ id?: string, car: string, title: string, due: IsoDate, intervalMonths: number, note: string, createdBy: string }} Reminder */
+/**
+ * Wiederkehrende Kosten (Versicherung, Steuer …): erzeugt ab `next` alle `intervalMonths` einen Eintrag.
+ * @typedef {{ id?: string, car: string, type: EntryType, cost: number, note: string, paidBy: string, start: IsoDate, next: IsoDate, intervalMonths: number, createdBy: string }} Recurring
+ */
 /** @template T @typedef {{ data: T, error?: undefined } | { error: string, data?: undefined }} Result */
 
 export const ID_RE = /^[a-z0-9]{1,20}$/;
@@ -326,3 +330,72 @@ export function intervalLabel(n) {
 export const entryKey = (e) => [e.car, entryType(e), e.date, e.odometer ?? '', e.cost, e.amount ?? ''].join('|');
 /** @param {Reminder} r */
 export const reminderKey = (r) => [r.car, r.title, r.due].join('|');
+
+export const REPEAT_OPTIONS = [0, 1, 3, 6, 12];
+
+/**
+ * Wiederholung aus einem gültigen Eintrag ableiten. @param {Entry} e @param {number} intervalMonths
+ * @returns {Result<Recurring>}
+ */
+export function recurringFromEntry(e, intervalMonths) {
+  if (!(Number.isInteger(intervalMonths) && intervalMonths >= 1 && intervalMonths <= 120)) return { error: 'Ungültige Wiederholung' };
+  if (entryType(e) === 'fuel') return { error: 'Tanken/Laden kann nicht wiederholt werden' };
+  return { data: {
+    car: e.car, type: entryType(e), cost: e.cost, note: e.note, paidBy: payerOf(e),
+    start: e.date, next: addMonths(e.date, intervalMonths), intervalMonths, createdBy: e.createdBy
+  } };
+}
+
+/**
+ * Fällige Termine einer Wiederholung bis `today` und der nächste Termin danach.
+ * Termine werden immer ab `start` gerechnet, damit Monatsenden nicht wandern (31.01. → 28.02. → 31.03.).
+ * @param {Recurring} r @param {IsoDate} today
+ */
+export function recurringDue(r, today) {
+  /** @type {IsoDate[]} */
+  const dates = [];
+  let k = 1, d = addMonths(r.start, r.intervalMonths);
+  while (d < r.next) d = addMonths(r.start, ++k * r.intervalMonths);
+  while (d <= today && dates.length < 240) { dates.push(d); d = addMonths(r.start, ++k * r.intervalMonths); }
+  return { dates, next: d };
+}
+
+/** Eintrag zu einem Termin einer Wiederholung. @param {Recurring} r @param {IsoDate} date @returns {Entry} */
+export function recurringEntry(r, date) {
+  return { car: r.car, type: r.type, date, cost: r.cost, note: r.note, createdBy: r.createdBy, paidBy: r.paidBy };
+}
+
+/**
+ * Verbrauch je Tank-/Ladevorgang (Menge / km seit dem vorherigen). Bei Verbrennern nur zwischen zwei Volltankungen,
+ * Teilbetankungen dazwischen werden aufaddiert.
+ * @param {Entry[]} entries @param {string} car @param {boolean} combustion
+ * @returns {{ id?: string, date: IsoDate, km: number, value: number }[]}
+ */
+export function consumptionSeries(entries, car, combustion) {
+  const fuel = entries.filter((e) => e.car === car && entryType(e) === 'fuel' && Number.isFinite(e.odometer) && (e.amount || 0) > 0)
+    .sort((a, b) => /** @type {number} */ (a.odometer) - /** @type {number} */ (b.odometer) || a.date.localeCompare(b.date));
+  /** @type {{ id?: string, date: IsoDate, km: number, value: number }[]} */
+  const out = [];
+  let base = -1, amount = 0;
+  for (const e of fuel) {
+    const odo = /** @type {number} */ (e.odometer);
+    if (base < 0) { if (!combustion || e.full) base = odo; continue; }
+    amount += /** @type {number} */ (e.amount);
+    if (combustion && !e.full) continue;
+    const km = odo - base;
+    if (km > 0) out.push({ id: e.id, date: e.date, km, value: amount / km * 100 });
+    base = odo; amount = 0;
+  }
+  return out;
+}
+
+/**
+ * Konflikt beim Ändern einer Buchung: eine andere Person hat den Tag für sich (oder alle) eingetragen.
+ * @param {Booking | null} prev @param {string | null} driver @param {string} me
+ * @returns {string | null} bisherige Person, deren Buchung überschrieben würde
+ */
+export function bookingConflict(prev, driver, me) {
+  if (!prev || prev.driver === driver || prev.driver === me) return null;
+  if (prev.updatedBy === me) return null;
+  return prev.driver;
+}

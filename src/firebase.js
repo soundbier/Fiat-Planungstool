@@ -49,6 +49,21 @@ export function subscribeReminders(code, cb, onError) {
     (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() })), snap.metadata), onError);
 }
 
+export function subscribeRecurring(code, cb, onError) {
+  return onSnapshot(col(code, 'recurring'), { includeMetadataChanges: true },
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() })), snap.metadata), onError);
+}
+
+// Fällige Einträge einer Wiederholung anlegen. Feste IDs: erzeugen zwei Geräte gleichzeitig, scheitert das zweite (Update verboten).
+export function generateRecurring(code, rec, dates, next) {
+  const batch = writeBatch(db);
+  for (const { date, data } of dates) {
+    batch.set(doc(db, 'households', code, 'entries', `r${rec.id}${date.replace(/-/g, '')}`), { ...data, createdAt: serverTimestamp() });
+  }
+  batch.update(doc(db, 'households', code, 'recurring', rec.id), { next });
+  return batch.commit();
+}
+
 const setupRef = (code) => doc(db, 'households', code, 'meta', 'setup');
 export function subscribeSetup(code, cb, onError) {
   return onSnapshot(setupRef(code), (snap) => cb(snap.exists() ? snap.data() : null), onError);
