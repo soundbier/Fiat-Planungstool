@@ -5,11 +5,24 @@ Vite + Vanilla JS + Firebase Firestore (offlinefähig via `persistentLocalCache`
 
 ## Funktionsweise
 
-- Beim Start meldet sich die App unsichtbar per **Firebase Anonymous Auth** an.
-- Erster Start: **Neuen Haushalt erstellen** (zufälliger 24-stelliger Code via `crypto.getRandomValues`, mit Kopieren-Button und QR-Code) oder **Haushalt beitreten** (Code eingeben oder Link `https://deine-domain/?h=CODE` öffnen).
-- Danach **Wer bist du?** – Lukas oder Marie. Code und Name liegen in `localStorage` und sind in den Einstellungen änderbar.
-- Daten: `households/{code}/bookings` und `households/{code}/entries`.
-- **Wer den Code kennt, hat Zugriff.** Code nur mit vertrauten Personen teilen.
+- Beim Start meldet sich die App unsichtbar per **Firebase Anonymous Auth** an (eine `uid` pro Gerät/Browser).
+- Erster Start: **Neuen Haushalt erstellen** (zufälliger 24-stelliger Code via `crypto.getRandomValues`) – danach erscheint
+  sofort eine **Einladung** (QR-Code/Link `https://deine-domain/#h=CODE&i=TOKEN`) für die zweite Person.
+- Danach **Wer bist du?** – Lukas oder Marie. Code und Name liegen in `localStorage`.
+- Daten: `households/{code}/bookings`, `/entries`, `/members/{uid}`, `/invites/{token}`, `/meta/config`.
+
+### Sicherheitsmodell (ohne Login)
+
+- **Geräte-Mitgliedschaft:** Lesen/Schreiben nur, wenn `members/{uid}` des Geräts existiert.
+- **Sperre** (`meta/config.locked`, Standard bei neuen Haushalten): Beitritt nur mit Einladung – der Code allein reicht nicht.
+  Ältere Haushalte ohne `config` sind offen, bis die Sperre in den Einstellungen aktiviert wird; bestehende Geräte treten beim
+  nächsten Start automatisch bei.
+- **Einladungen:** einmalig (werden beim Beitritt im selben Batch gelöscht), 24 h gültig (Rules: max. 7 Tage), widerrufbar.
+- **Link im Fragment** (`#…`): wird nicht an den Server gesendet, landet also nicht in Server-Logs oder Referrern.
+  Alte Links `/?h=CODE` funktionieren weiterhin (nur bei offenen Haushalten).
+- **Geräte entfernen:** In den Einstellungen sichtbar, jedes Gerät kann andere entfernen.
+- **Code erneuern:** kopiert alle Daten in einen neuen Haushalt, sperrt den alten und löscht dort Daten und Geräte.
+- **Security-Header** (CSP, Referrer-Policy, X-Frame-Options, …) in [`public/_headers`](public/_headers) für Cloudflare Pages.
 
 ## Lokale Entwicklung
 
@@ -54,6 +67,7 @@ npm run dev
 Die Regeln:
 - erlauben Zugriff nur für angemeldete Nutzer (`request.auth != null`) und nur unterhalb von `households/{code}/bookings` bzw. `/entries`,
 - verbieten jeden Zugriff auf `households` selbst (kein `list` → Codes sind nicht auslesbar),
+- erlauben Daten nur Mitgliedern (`members/{uid}`); Beitritt nur bei offenem Haushalt oder mit gültiger, einmaliger Einladung,
 - prüfen bei Buchungen, dass die Dokument-ID `{date}_{car}` entspricht,
 - validieren alle Felder (Fahrer/Ersteller `lukas`/`marie`, Auto `fiat`/`citroen`, Datumsformat, Zahlenbereiche, `full` nur beim Citroën, Notizlänge, Server-Timestamps).
 

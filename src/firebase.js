@@ -2,7 +2,8 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-  collection, doc, addDoc, deleteDoc, writeBatch, onSnapshot, query, orderBy, serverTimestamp
+  collection, doc, addDoc, deleteDoc, getDoc, getDocs, setDoc, writeBatch, onSnapshot, query, orderBy,
+  serverTimestamp, Timestamp
 } from 'firebase/firestore';
 import { firebaseConfig, missingConfigKeys } from './firebase-config.js';
 
@@ -57,4 +58,84 @@ export function setBookingsBatch(code, changes, updatedBy) {
     else batch.delete(bookingRef(code, date, car));
   }
   return batch.commit();
+}
+
+/* ---------- Mitgliedschaft, Einladungen, Code-Rotation ---------- */
+
+const memberRef = (code, uid) => doc(db, 'households', code, 'members', uid);
+const configRef = (code) => doc(db, 'households', code, 'meta', 'config');
+const inviteRef = (code, token) => doc(db, 'households', code, 'invites', token);
+
+export async function isMember(code, uid) {
+  return (await getDoc(memberRef(code, uid))).exists();
+}
+
+// Einladung wird im selben Batch verbraucht (Rules erzwingen das).
+export function joinHousehold(code, uid, device, invite) {
+  const batch = writeBatch(db);
+  batch.set(memberRef(code, uid), { device, joinedAt: serverTimestamp(), ...(invite ? { invite } : {}) });
+  if (invite) batch.delete(inviteRef(code, invite));
+  return batch.commit();
+}
+
+export async function createHousehold(code, uid, device, locked = true) {
+  await joinHousehold(code, uid, device, null);
+  await setDoc(configRef(code), { locked });
+}
+
+export const setLocked = (code, locked) => setDoc(configRef(code), { locked });
+
+export function subscribeConfig(code, cb, onError) {
+  return onSnapshot(configRef(code), (snap) => cb(snap.exists() ? snap.data() : { locked: false }), onError);
+}
+
+export function subscribeMembers(code, cb, onError) {
+  return onSnapshot(collection(db, 'households', code, 'members'),
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))), onError);
+}
+
+export const removeMember = (code, uid) => deleteDoc(memberRef(code, uid));
+
+export async function createInvite(code, token, hours = 24) {
+  await setDoc(inviteRef(code, token), {
+    createdAt: serverTimestamp(),
+    expiresAt: Timestamp.fromMillis(Date.now() + hours * 3600 * 1000)
+  });
+}
+
+export async function revokeInvites(code) {
+  const snap = await getDocs(col(code, 'invites'));
+  await commitChunks(snap.docs.map((d) => (b) => b.delete(d.ref)));
+  return snap.size;
+}
+
+async function commitChunks(ops, size = 400) {
+  for (let i = 0; i < ops.length; i += size) {
+    const batch = writeBatch(db);
+    ops.slice(i, i + size).forEach((op) => op(batch));
+    await batch.commit();
+  }
+}
+
+// Kopiert alle Daten in einen neuen Haushalt, sperrt den alten und entfernt dort Daten und Geräte.
+export async function rotateHousehold(oldCode, newCode, uid, device) {
+  const [cfg, bookings, entries, invites, members] = await Promise.all([
+    getDoc(configRef(oldCode)),
+    getDocs(col(oldCode, 'bookings')),
+    getDocs(col(oldCode, 'entries')),
+    getDocs(col(oldCode, 'invites')),
+    getDocs(col(oldCode, 'members'))
+  ]);
+  await createHousehold(newCode, uid, device, cfg.exists() ? cfg.data().locked : true);
+  await commitChunks([
+    ...bookings.docs.map((d) => (b) => b.set(doc(db, 'households', newCode, 'bookings', d.id),
+      { ...d.data(), updatedAt: serverTimestamp() })),
+    ...entries.docs.map((d) => (b) => b.set(doc(col(newCode, 'entries')),
+      { ...d.data(), createdAt: serverTimestamp() }))
+  ]);
+  await setDoc(configRef(oldCode), { locked: true });
+  await commitChunks([...bookings.docs, ...entries.docs, ...invites.docs].map((d) => (b) => b.delete(d.ref)));
+  const others = members.docs.filter((d) => d.id !== uid);
+  await commitChunks(others.map((d) => (b) => b.delete(d.ref)));
+  await removeMember(oldCode, uid);
 }

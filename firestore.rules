@@ -12,6 +12,31 @@ service cloud.firestore {
     function validDate(d) {
       return d is string && d.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
     }
+    function isMember(code) {
+      return signedIn() && validCode(code)
+        && exists(/databases/$(database)/documents/households/$(code)/members/$(request.auth.uid));
+    }
+    function joinOpen(code) {
+      return !exists(/databases/$(database)/documents/households/$(code)/meta/config)
+        || get(/databases/$(database)/documents/households/$(code)/meta/config).data.locked == false;
+    }
+    function validToken(t) {
+      return t is string && t.size() >= 20 && t.size() <= 64 && t.matches('^[A-Za-z0-9]+$');
+    }
+    // Einladung muss existieren, gültig sein und im selben Batch gelöscht werden (einmalig).
+    function validInvite(code, t) {
+      return validToken(t)
+        && exists(/databases/$(database)/documents/households/$(code)/invites/$(t))
+        && get(/databases/$(database)/documents/households/$(code)/invites/$(t)).data.expiresAt > request.time
+        && !existsAfter(/databases/$(database)/documents/households/$(code)/invites/$(t));
+    }
+    function validMember(d) {
+      return d.keys().hasOnly(['device', 'joinedAt', 'invite'])
+        && d.keys().hasAll(['device', 'joinedAt'])
+        && d.device is string && d.device.size() <= 80
+        && d.joinedAt == request.time;
+    }
+
     function validPerson(p) {
       return p in ['lukas', 'marie'];
     }
@@ -45,18 +70,52 @@ service cloud.firestore {
     match /households/{code} {
       allow read, write: if false;
 
+      // Geräte-Mitgliedschaft: Beitritt nur, wenn der Haushalt offen ist oder mit gültiger Einladung.
+      match /members/{uid} {
+        allow get: if signedIn() && validCode(code) && (uid == request.auth.uid || isMember(code));
+        allow list: if isMember(code);
+        allow create: if signedIn() && validCode(code) && uid == request.auth.uid
+          && validMember(request.resource.data)
+          && (joinOpen(code)
+            || ('invite' in request.resource.data && validInvite(code, request.resource.data.invite)));
+        allow update: if false;
+        allow delete: if isMember(code);
+      }
+
+      match /meta/{id} {
+        allow get: if isMember(code);
+        allow create, update: if isMember(code) && id == 'config'
+          && request.resource.data.keys().hasOnly(['locked'])
+          && request.resource.data.locked is bool;
+        allow delete: if false;
+      }
+
+      match /invites/{token} {
+        allow get, list: if isMember(code);
+        allow create: if isMember(code) && validToken(token)
+          && request.resource.data.keys().hasOnly(['createdAt', 'expiresAt'])
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.expiresAt is timestamp
+          && request.resource.data.expiresAt > request.time
+          && request.resource.data.expiresAt <= request.time + duration.value(7, 'd');
+        allow update: if false;
+        allow delete: if isMember(code)
+          || (signedIn() && validCode(code)
+            && getAfter(/databases/$(database)/documents/households/$(code)/members/$(request.auth.uid)).data.invite == token);
+      }
+
       match /bookings/{id} {
-        allow get, list: if signedIn() && validCode(code);
-        allow create, update: if signedIn() && validCode(code)
+        allow get, list: if isMember(code);
+        allow create, update: if isMember(code)
           && validBooking(request.resource.data, id);
-        allow delete: if signedIn() && validCode(code);
+        allow delete: if isMember(code);
       }
 
       match /entries/{id} {
-        allow get, list: if signedIn() && validCode(code);
-        allow create: if signedIn() && validCode(code) && validEntry(request.resource.data);
+        allow get, list: if isMember(code);
+        allow create: if isMember(code) && validEntry(request.resource.data);
         allow update: if false;
-        allow delete: if signedIn() && validCode(code);
+        allow delete: if isMember(code);
       }
     }
 
