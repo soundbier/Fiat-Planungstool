@@ -1,9 +1,15 @@
-// Werte aus der Firebase-Konsole: Projekteinstellungen → Allgemein → Deine Apps → Web-App.
+// Werte kommen zur Build-Zeit aus Umgebungsvariablen (lokal: .env.local, Cloudflare Pages: Variablen und Secrets).
+const env = import.meta.env;
+
 export const firebaseConfig = {
-  apiKey: 'DEIN_API_KEY',
-  authDomain: 'DEIN_PROJEKT.firebaseapp.com',
-  projectId: 'DEIN_PROJEKT',
-  storageBucket: 'DEIN_PROJEKT.appspot.com',
-  messagingSenderId: '000000000000',
-  appId: '1:000000000000:web:0000000000000000'
+  apiKey: env.VITE_FIREBASE_API_KEY,
+  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: env.VITE_FIREBASE_APP_ID
 };
+
+export const missingConfigKeys = Object.entries(firebaseConfig)
+  .filter(([, v]) => !v)
+  .map(([k]) => k);

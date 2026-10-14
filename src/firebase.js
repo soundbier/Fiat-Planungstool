@@ -4,7 +4,12 @@ import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
   collection, doc, addDoc, setDoc, updateDoc, deleteDoc, writeBatch, onSnapshot, query, orderBy, serverTimestamp
 } from 'firebase/firestore';
-import { firebaseConfig } from './firebase-config.js';
+import { firebaseConfig, missingConfigKeys } from './firebase-config.js';
+
+if (missingConfigKeys.length) {
+  throw new Error('Firebase-Konfiguration fehlt: ' + missingConfigKeys.join(', ') +
+    '. Umgebungsvariablen VITE_FIREBASE_* setzen (siehe README).');
+}
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
