@@ -1,11 +1,12 @@
 import './style.css';
+import { initPwa } from './pwa.js';
 import { addItem, deleteItem, ensureAuth, removeMember, revokeInvites, setLocked } from './firebase.js';
-import { createNewHousehold, enterHousehold, leaveHousehold, newInvite, rotateCode, setHousehold, shareHousehold } from './household.js';
+import { createNewHousehold, enterHousehold, leaveHousehold, newInvite, refreshSync, rotateCode, setHousehold, shareHousehold } from './household.js';
 import { ID_RE, REMINDER_PRESETS } from './lib/model.js';
 import { CODE_RE, addDays, esc, firstOfMonth, isoDate, mondayOf, parseInvite } from './lib/util.js';
 import { render, run } from './render.js';
 import { DEFAULT_PREFS, LS_CODE, LS_NAME, applyPrefs, prefs, setPref, state } from './state.js';
-import { app, copyText, errText, toast } from './ui.js';
+import { app, blurActive, copyText, errText, focusBySelector, focusSelector, focusables, toast } from './ui.js';
 import { copyWeek, resetWeek, saveDayCar, updateDayWarning } from './views/calendar.js';
 import { exportCsv, exportJson, importFile } from './views/data.js';
 import { onEntryCarChange, submitEntry, updateEntryForm, updateEntryPreview } from './views/entries.js';
@@ -18,7 +19,7 @@ if (['calendar', 'entries', 'reminders', 'stats'].includes(prefs.startTab)) stat
 
 /* ---------- Events ---------- */
 app.addEventListener('click', (ev) => {
-  const el = ev.target.closest('[data-action]');
+  const el = /** @type {HTMLInputElement | null} */ (/** @type {HTMLElement} */ (ev.target).closest('[data-action]'));
   if (!el) return;
   const { action } = el.dataset;
   switch (action) {
@@ -71,26 +72,33 @@ app.addEventListener('click', (ev) => {
       state.dayDialog = null;
       state.entrySheet = false;
       state.reminderSheet = null;
-      document.activeElement?.blur();
+      blurActive();
       app.innerHTML = '';
       render();
       window.scrollTo(0, 0);
+      focusBySelector(`button[data-action="tab"][data-tab="${state.tab}"]`);
       return;
     case 'month':
       state.month = new Date(state.month.getFullYear(), state.month.getMonth() + Number(el.dataset.delta), 1);
       break;
     case 'period': state.statsPeriod = el.dataset.period; break;
-    case 'open-day': state.selectedDay = el.dataset.day; state.dayDialog = el.dataset.day; break;
+    case 'open-day':
+      state.returnFocus = focusSelector(el);
+      state.selectedDay = el.dataset.day;
+      state.dayDialog = el.dataset.day;
+      break;
     case 'day-step':
       state.dayDialog = addDays(state.dayDialog, Number(el.dataset.delta));
       state.selectedDay = state.dayDialog;
       break;
     case 'month-today': state.month = firstOfMonth(new Date()); break;
+    case 'cal-week': state.week = addDays(state.week, Number(el.dataset.delta)); break;
+    case 'cal-week-today': state.week = mondayOf(isoDate(new Date())); break;
     case 'week':
       state.copyWeek = addDays(state.copyWeek || mondayOf(isoDate(new Date())), Number(el.dataset.delta));
       break;
-    case 'open-entry': state.entrySheet = true; break;
-    case 'open-reminder': state.reminderSheet = el.dataset.id || 'new'; break;
+    case 'open-entry': state.returnFocus = focusSelector(el); state.entrySheet = true; break;
+    case 'open-reminder': state.returnFocus = focusSelector(el); state.reminderSheet = el.dataset.id || 'new'; break;
     case 'close-reminder':
       if (ev.target !== el && !el.matches('button')) return;
       state.reminderSheet = null;
@@ -118,11 +126,13 @@ app.addEventListener('click', (ev) => {
     case 'reset-week': resetWeek(); return;
     case 'export-csv': exportCsv(); return;
     case 'pref': setPref(el.dataset.key, el.dataset.value); break;
-    case 'reset-prefs':
-      Object.assign(prefs, DEFAULT_PREFS, { colors: { ...DEFAULT_PREFS.colors } });
-      setPref('theme', prefs.theme);
-      toast('Darstellung zurückgesetzt');
-      break;
+    case 'reset-prefs': {
+      const before = structuredClone(prefs);
+      const restore = (p) => { Object.assign(prefs, p, { colors: { ...p.colors } }); setPref('theme', prefs.theme); render(); };
+      restore(DEFAULT_PREFS);
+      toast('Darstellung zurückgesetzt', { label: 'Rückgängig', run: () => restore(before) });
+      return;
+    }
     case 'delete-entry': {
       const entry = state.entries.find((e) => e.id === el.dataset.id);
       if (!entry) return;
@@ -138,42 +148,43 @@ app.addEventListener('click', (ev) => {
     }
     default: return;
   }
-  document.activeElement?.blur();
   render();
 });
 
 app.addEventListener('change', (ev) => {
-  if (ev.target.id === 'import-file') {
-    const file = ev.target.files?.[0];
-    ev.target.value = '';
+  const target = /** @type {HTMLInputElement} */ (ev.target);
+  if (target.id === 'import-file') {
+    const file = target.files?.[0];
+    target.value = '';
     if (file) importFile(file);
     return;
   }
-  const form = ev.target.form;
-  if (form?.id === 'day-form') { updateDayWarning(form); saveDayCar(form, ev.target.name); }
-  if (form?.id === 'entry-form' && ev.target.name === 'car') onEntryCarChange(form);
-  if (form?.id === 'entry-form' && ev.target.name === 'type') { state.entryType = ev.target.value; updateEntryForm(form); }
-  if (form?.id === 'reminder-form' && ev.target.name === 'title') {
-    const preset = REMINDER_PRESETS.find(([t]) => t === ev.target.value);
-    if (preset && !form.dataset.id) form.elements.intervalMonths.value = String(preset[1]);
+  const form = target.form;
+  if (form?.id === 'day-form') { updateDayWarning(form); saveDayCar(form, target.name); }
+  if (form?.id === 'entry-form' && target.name === 'car') onEntryCarChange(form);
+  if (form?.id === 'entry-form' && target.name === 'type') { state.entryType = target.value; updateEntryForm(form); }
+  if (form?.id === 'reminder-form' && target.name === 'title') {
+    const preset = REMINDER_PRESETS.find(([t]) => t === target.value);
+    if (preset && !form.dataset.id) /** @type {HTMLSelectElement} */ (form.elements.namedItem('intervalMonths')).value = String(preset[1]);
   }
 });
 
 app.addEventListener('input', (ev) => {
-  const form = ev.target.form;
+  const target = /** @type {HTMLInputElement} */ (ev.target);
+  const form = target.form;
   if (form?.id === 'entry-form') updateEntryPreview(form);
 });
 
 app.addEventListener('submit', (ev) => {
   ev.preventDefault();
-  const form = ev.target;
-  document.activeElement?.blur();
+  const form = /** @type {HTMLFormElement} */ (ev.target);
+  blurActive();
   if (form.id === 'day-form') return;
   if (form.id === 'entry-form') submitEntry(form);
   else if (form.id === 'reminder-form') submitReminder(form);
   else if (form.id === 'setup-form') submitSetup(form);
   else if (form.id === 'join-form' || form.id === 'switch-form') {
-    const parsed = parseInvite(new FormData(form).get('code'));
+    const parsed = parseInvite(new FormData(form).get('code'), location.origin);
     const isJoin = form.id === 'join-form';
     if (!parsed) {
       if (isJoin) { state.error = 'Ungültiger Link oder Code.'; render(); }
@@ -193,15 +204,77 @@ app.addEventListener('submit', (ev) => {
   }
 });
 
+/* ---------- Tastatur: Dialoge schließen (Esc) und Fokus im Dialog halten (Tab) ---------- */
+
+function closeDialog() {
+  if (state.dayDialog) state.dayDialog = null;
+  else if (state.entrySheet) state.entrySheet = false;
+  else if (state.reminderSheet) state.reminderSheet = null;
+  else return false;
+  blurActive();
+  render();
+  return true;
+}
+
+document.addEventListener('keydown', (ev) => {
+  const box = /** @type {HTMLElement | null} */ (app.querySelector('.dialog'));
+  if (!box) return;
+  if (ev.key === 'Escape') {
+    if (closeDialog()) ev.preventDefault();
+    return;
+  }
+  if (ev.key !== 'Tab') return;
+  const list = focusables(box);
+  if (!list.length) return;
+  const first = list[0], last = list[list.length - 1];
+  if (!box.contains(document.activeElement)) { ev.preventDefault(); first.focus(); }
+  else if (ev.shiftKey && document.activeElement === first) { ev.preventDefault(); last.focus(); }
+  else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
+});
+
+/* ---------- Wischgesten: Monat/Woche im Kalender, Tag im Tagesdialog ---------- */
+
+let touch = null;
+app.addEventListener('touchstart', (ev) => {
+  const zone = /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (ev.target).closest('[data-swipe]'));
+  touch = zone && ev.touches.length === 1 ? { zone: zone.dataset.swipe, x: ev.touches[0].clientX, y: ev.touches[0].clientY } : null;
+}, { passive: true });
+app.addEventListener('touchend', (ev) => {
+  if (!touch) return;
+  const dx = ev.changedTouches[0].clientX - touch.x;
+  const dy = ev.changedTouches[0].clientY - touch.y;
+  const zone = touch.zone;
+  touch = null;
+  if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+  const dir = dx < 0 ? 1 : -1; // nach links wischen = vor
+  if (zone === 'month') state.month = new Date(state.month.getFullYear(), state.month.getMonth() + dir, 1);
+  else if (zone === 'week') state.week = addDays(state.week, 7 * dir);
+  else if (zone === 'day' && state.dayDialog) {
+    if (app.querySelector('#day-form')?.contains(document.activeElement)) blurActive();
+    state.dayDialog = addDays(state.dayDialog, dir);
+    state.selectedDay = state.dayDialog;
+  } else return;
+  render();
+}, { passive: true });
+
+window.addEventListener('online', refreshSync);
+window.addEventListener('offline', refreshSync);
+
 // Ausstehende Renderings nachholen, wenn ein Eingabefeld verlassen wird
-app.addEventListener('focusout', () => setTimeout(() => {
-  if (!app.contains(document.activeElement) || !document.activeElement.form) render();
-}, 0));
+// (nur nach Eingabefeldern – render() blockiert nur dort; sonst entstünde eine Schleife,
+// weil das Ersetzen des fokussierten Elements selbst ein focusout auslöst)
+app.addEventListener('focusout', (ev) => {
+  const t = /** @type {HTMLInputElement} */ (ev.target);
+  if (!t.form || !t.name || t.type === 'radio') return;
+  setTimeout(() => {
+    if (!app.contains(document.activeElement) || !(/** @type {HTMLInputElement} */ (document.activeElement).form)) render();
+  }, 0);
+});
 
 /* ---------- Boot ---------- */
 async function boot() {
   // Neues Format: /#h=CODE&i=TOKEN; altes /?h=CODE wird weiter akzeptiert.
-  const link = parseInvite(location.href);
+  const link = parseInvite(location.href, location.origin);
   const linkCode = link?.code;
   if (location.hash || location.search) history.replaceState(null, '', location.pathname);
 
@@ -245,3 +318,4 @@ async function boot() {
 }
 
 boot();
+initPwa();

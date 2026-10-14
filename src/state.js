@@ -1,20 +1,30 @@
 import { DEFAULT_SETUP, ID_RE, TYPES } from './lib/model.js';
-import { firstOfMonth, isoDate } from './lib/util.js';
+import { firstOfMonth, isoDate, mondayOf } from './lib/util.js';
 
 export const CAR_COLORS = ['#1f7a6d', '#c2581b', '#7a4bb0', '#3b7d2a', '#b0477f', '#2c5d8f', '#8a6d1d', '#4a4a48'];
 
 export const LS_CODE = 'autoplaner.household';
-
 export const LS_NAME = 'autoplaner.name';
-
 export const LS_PREFS = 'autoplaner.prefs';
-
 export const LS_MEMBER = 'autoplaner.member';
 
 export const SWATCHES = ['#2c5d8f', '#a8324a', '#1f7a6d', '#7a4bb0', '#c2581b', '#3b7d2a', '#b0477f', '#4a4a48'];
 
-export const DEFAULT_PREFS = { theme: 'system', scheme: 'warm', size: 'normal', startTab: 'calendar', colors: {} };
+export const DEFAULT_PREFS = { theme: 'system', scheme: 'warm', size: 'normal', startTab: 'calendar', calView: 'month', colors: {} };
 
+/**
+ * Gesamter UI-Zustand. Firestore-Daten werden per Snapshot-Listener hineingeschrieben (household.js).
+ * @type {{
+ *   code: string | null, name: string | null, tab: string,
+ *   bookings: import('./lib/model.js').Booking[], entries: import('./lib/model.js').Entry[],
+ *   reminders: import('./lib/model.js').Reminder[], setup: import('./lib/model.js').Setup, setupLoaded: boolean,
+ *   members: any[], config: { locked: boolean }, invite: { link: string, expires: number } | null,
+ *   showCode: boolean, busy: boolean, month: Date, week: string, selectedDay: string, statsPeriod: string,
+ *   entryCar: string | null, entryType: string, reminderSheet: string | null, dayDialog: string | null,
+ *   copyWeek: string | null, entrySheet: boolean, setupStep: string | null, error: string | null,
+ *   sync: 'synced' | 'pending' | 'connecting' | 'offline', returnFocus: string | null
+ * }}
+ */
 export const state = {
   code: null,
   name: null,
@@ -30,6 +40,7 @@ export const state = {
   showCode: false,
   busy: false,
   month: firstOfMonth(new Date()),
+  week: mondayOf(isoDate(new Date())),
   selectedDay: isoDate(new Date()),
   statsPeriod: 'year',
   entryCar: null,
@@ -39,7 +50,9 @@ export const state = {
   copyWeek: null,
   entrySheet: false,
   setupStep: null,
-  error: null
+  error: null,
+  sync: 'connecting',
+  returnFocus: null
 };
 
 function loadPrefs() {

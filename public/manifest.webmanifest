@@ -1,7 +1,7 @@
 {
   "name": "Autoplaner",
   "short_name": "Autoplaner",
-  "description": "Gemeinsame Autoplanung für Lukas und Marie",
+  "description": "Gemeinsame Autoplanung im Haushalt: Kalender, Kosten, Fristen",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

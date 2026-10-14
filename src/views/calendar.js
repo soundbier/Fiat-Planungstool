@@ -1,14 +1,52 @@
 import { setBookingsBatch } from '../firebase.js';
 import { dueReminders } from '../lib/model.js';
-import { addDays, esc, fmtDate, isoDate, mondayOf, pad, shortRange, weekNumber } from '../lib/util.js';
+import { addDays, esc, fmtDate, fmtDateLong, isoDate, mondayOf, pad, shortRange, weekNumber } from '../lib/util.js';
 import { render } from '../render.js';
-import { carOf, cars, cc, pc, people, personName, state } from '../state.js';
+import { carName, carOf, cars, cc, pc, people, personName, prefs, state } from '../state.js';
 import { toast } from '../ui.js';
 import { dueLabel } from './reminders.js';
 
 /* ---------- Calendar ---------- */
 export function bookingFor(iso, car) {
   return state.bookings.find((b) => b.date === iso && b.car === car) || null;
+}
+
+/** Vorlesbare Beschreibung eines Tages, z. B. „Mittwoch, 14. Oktober 2026: Fiat 500e Lukas, Citroën frei“ */
+function dayLabel(iso) {
+  return `${fmtDateLong(iso)}: ${cars().map((c) => `${c.name} ${bookingFor(iso, c.id) ? personName(bookingFor(iso, c.id).driver) : 'frei'}`).join(', ')}`;
+}
+
+function viewToggle() {
+  const v = prefs.calView;
+  return `<div class="seg seg-sm" role="group" aria-label="Ansicht">
+    ${[['month', 'Monat'], ['week', 'Woche']].map(([id, l]) => `<button class="seg-opt btn-seg ${v === id ? 'active' : ''}" data-action="pref" data-key="calView" data-value="${id}" aria-pressed="${v === id}">${l}</button>`).join('')}
+  </div>`;
+}
+
+function renderWeek(today) {
+  const start = state.week;
+  const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
+  const isCurrent = start === mondayOf(today);
+  return `
+    <section class="card cal" data-swipe="week">
+      <div class="cal-head">
+        <button class="icon-btn" data-action="cal-week" data-delta="-7" aria-label="Vorherige Woche">‹</button>
+        <h2>KW ${weekNumber(start)} <small class="muted">${shortRange(start)}</small></h2>
+        ${isCurrent ? '' : '<button class="btn-text" data-action="cal-week-today">Heute</button>'}
+        <button class="icon-btn" data-action="cal-week" data-delta="7" aria-label="Nächste Woche">›</button>
+      </div>
+      ${viewToggle()}
+      <ul class="week-list">
+        ${days.map((iso) => {
+          const [, , d] = iso.split('-');
+          const wd = new Date(`${iso}T12:00`).toLocaleDateString('de-DE', { weekday: 'short' });
+          return `<li><button class="week-day${iso === today ? ' today' : ''}${iso < today ? ' past' : ''}" data-action="open-day" data-day="${iso}" aria-label="${esc(dayLabel(iso))}"${iso === today ? ' aria-current="date"' : ''}>
+            <span class="wd"><b>${wd}</b> ${Number(d)}.</span>
+            <span class="wd-cars">${cars().map((c) => `<span class="ov-row"><span class="ov-car">${esc(c.name)}</span>${driverChip(iso, c.id)}</span>`).join('')}</span>
+          </button></li>`;
+        }).join('')}
+      </ul>
+    </section>`;
 }
 
 export function driverChip(iso, car) {
@@ -58,27 +96,31 @@ export function renderCalendar() {
       return b ? `<span class="chip pc"${pc(b.driver)}>${esc(c.short)} ${esc(personName(b.driver))}</span>` : '';
     }).join('');
     const inWeek = iso >= weekStart && iso <= weekEnd;
-    cells.push(`<button class="day${iso === today ? ' today' : ''}${iso < today ? ' past' : ''}${inWeek ? ' in-week' : ''}" data-action="open-day" data-day="${iso}">
+    cells.push(`<button class="day${iso === today ? ' today' : ''}${iso < today ? ' past' : ''}${inWeek ? ' in-week' : ''}" data-action="open-day" data-day="${iso}" aria-label="${esc(dayLabel(iso))}"${iso === today ? ' aria-current="date"' : ''}>
       <span class="day-num">${d}</span>${chips}
     </button>`);
   }
   const title = m.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
-  return `
-    ${renderOverview()}
-    <section class="card cal">
+  const legend = `<div class="legend">
+        ${people().map((p) => `<span><i class="dot pc"${pc(p.id)}></i>${esc(p.name)}</span>`).join('')}
+        <span>${cars().map((c) => `${esc(c.short)} ${esc(c.name)}`).join(' · ')}</span>
+      </div>`;
+  const main = prefs.calView === 'week' ? renderWeek(today) : `
+    <section class="card cal" data-swipe="month">
       <div class="cal-head">
         <button class="icon-btn" data-action="month" data-delta="-1" aria-label="Vorheriger Monat">‹</button>
         <h2>${title}</h2>
         ${isCurrentMonth ? '' : '<button class="btn-text" data-action="month-today">Heute</button>'}
         <button class="icon-btn" data-action="month" data-delta="1" aria-label="Nächster Monat">›</button>
       </div>
-      <div class="weekdays">${['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map((w) => `<span>${w}</span>`).join('')}</div>
+      ${viewToggle()}
+      <div class="weekdays" aria-hidden="true">${['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map((w) => `<span>${w}</span>`).join('')}</div>
       <div class="grid">${cells.join('')}</div>
-      <div class="legend">
-        ${people().map((p) => `<span><i class="dot pc"${pc(p.id)}></i>${esc(p.name)}</span>`).join('')}
-        <span>${cars().map((c) => `${esc(c.short)} ${esc(c.name)}`).join(' · ')}</span>
-      </div>
-    </section>
+      ${legend}
+    </section>`;
+  return `
+    ${renderOverview()}
+    ${main}
     <section class="card">
       <h3>Woche übertragen</h3>
       <div class="week-pick">
@@ -94,10 +136,10 @@ export function renderCalendar() {
 export function renderDayDialog(iso) {
   return `
     <div class="overlay" data-action="close-day">
-      <form class="dialog" id="day-form" data-day="${iso}">
+      <form class="dialog" id="day-form" data-day="${iso}" data-swipe="day" role="dialog" aria-modal="true" aria-labelledby="day-title">
         <div class="sheet-head">
           <button class="icon-btn" type="button" data-action="day-step" data-delta="-1" aria-label="Vorheriger Tag">‹</button>
-          <h3>${fmtDate(iso)}</h3>
+          <h3 id="day-title">${fmtDate(iso)}</h3>
           <button class="icon-btn" type="button" data-action="day-step" data-delta="1" aria-label="Nächster Tag">›</button>
         </div>
         ${cars().map((c) => {
@@ -133,9 +175,14 @@ export function updateDayWarning(form) {
 export function saveDayCar(form, car) {
   const iso = form.dataset.day;
   const driver = new FormData(form).get(car) || null;
-  if ((bookingFor(iso, car)?.driver || null) === driver) return;
-  setBookingsBatch(state.code, [{ date: iso, car, driver }], state.name)
-    .catch((e) => toast('Fehler: ' + e.message));
+  const prev = bookingFor(iso, car)?.driver || null;
+  if (prev === driver) return;
+  const err = (e) => toast('Fehler: ' + e.message);
+  setBookingsBatch(state.code, [{ date: iso, car, driver }], state.name).catch(err);
+  toast(`${carName(car)} ${fmtDate(iso)}: ${driver ? personName(driver) : 'frei'}`, {
+    label: 'Rückgängig',
+    run: () => setBookingsBatch(state.code, [{ date: iso, car, driver: prev }], state.name).catch(err)
+  });
 }
 
 export function copyWeek() {

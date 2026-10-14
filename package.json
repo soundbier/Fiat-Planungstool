@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc -p jsconfig.json && tsc -p jsconfig.app.json",
+    "check": "npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
     "firebase": "^11.0.0",

@@ -27,6 +27,7 @@ export function toast(msg, action) {
   const el = document.createElement('div');
   el.className = 'toast' + (action ? ' has-action' : '');
   el.setAttribute('role', 'status');
+  el.setAttribute('aria-live', 'polite');
   const text = document.createElement('span');
   text.textContent = msg;
   el.appendChild(text);
@@ -37,7 +38,7 @@ export function toast(msg, action) {
     el.appendChild(btn);
   }
   document.body.appendChild(el);
-  setTimeout(() => el.remove(), action ? 5000 : 2200);
+  if (!action?.sticky) setTimeout(() => el.remove(), action ? 5000 : 2200);
 }
 
 export async function copyText(text) {
@@ -65,4 +66,41 @@ export const ICONS = {
 
 export function icon(name) {
   return `<svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>`;
+}
+
+/* ---------- Barrierefreiheit ---------- */
+
+const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/** Fokussierbare Elemente in `root` (ohne ausgeblendete). @param {ParentNode} root @returns {HTMLElement[]} */
+export function focusables(root) {
+  return /** @type {HTMLElement[]} */ ([...root.querySelectorAll(FOCUSABLE)]).filter((el) => !el.closest('[hidden]'));
+}
+
+/**
+ * Selektor, mit dem sich das Element nach einem Re-Render wiederfinden lässt.
+ * @param {Element | null} el
+ * @returns {string | null}
+ */
+export function focusSelector(el) {
+  if (!(el instanceof HTMLElement) || !app.contains(el)) return null;
+  if (el.id) return `#${CSS.escape(el.id)}`;
+  const attrs = [...el.attributes].filter((a) => a.name.startsWith('data-'));
+  if (attrs.length) return el.tagName.toLowerCase() + attrs.map((a) => `[${a.name}="${CSS.escape(a.value)}"]`).join('');
+  const f = /** @type {HTMLInputElement} */ (el);
+  if (f.name && f.form?.id) {
+    return `#${CSS.escape(f.form.id)} [name="${CSS.escape(f.name)}"]` + (f.type === 'radio' ? `[value="${CSS.escape(f.value)}"]` : '');
+  }
+  return null;
+}
+
+/** @param {string | null} sel */
+export function focusBySelector(sel) {
+  const el = sel ? /** @type {HTMLElement | null} */ (app.querySelector(sel)) : null;
+  if (el) el.focus({ preventScroll: true });
+  return !!el;
+}
+
+export function blurActive() {
+  /** @type {HTMLElement | null} */ (document.activeElement)?.blur();
 }

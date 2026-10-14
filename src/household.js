@@ -43,6 +43,33 @@ export async function shareHousehold() {
 
 /* ---------- Data ---------- */
 let offlineTimer = null;
+/** Letzte Snapshot-Metadaten je Sammlung */
+const meta = {};
+
+/**
+ * Sync-Status aus Snapshot-Metadaten und Netzstatus ableiten:
+ * synced – alles beim Server; pending – lokale Änderungen noch nicht bestätigt;
+ * connecting – nur Cache, Verbindung wird aufgebaut; offline – länger als 5 s ohne Server.
+ */
+export function refreshSync() {
+  const list = Object.values(meta).filter(Boolean);
+  const cached = !navigator.onLine || list.some((m) => m.fromCache);
+  const pending = list.some((m) => m.hasPendingWrites);
+  const prev = state.sync;
+  if (!cached) {
+    clearTimeout(offlineTimer);
+    offlineTimer = null;
+    state.sync = pending ? 'pending' : 'synced';
+  } else if (!navigator.onLine) {
+    clearTimeout(offlineTimer);
+    offlineTimer = null;
+    state.sync = 'offline';
+  } else if (prev !== 'offline' && !offlineTimer) {
+    state.sync = 'connecting';
+    offlineTimer = setTimeout(() => { offlineTimer = null; state.sync = 'offline'; render(); }, 5000);
+  }
+  if (state.sync !== prev) render();
+}
 
 export function startSync() {
   stopSync();
@@ -52,18 +79,12 @@ export function startSync() {
     state.error = 'Synchronisation fehlgeschlagen: ' + errText(e);
     render();
   };
-  const meta = { bookings: null, entries: null };
-  const onMeta = (key, m) => {
-    meta[key] = m;
-    const offline = Object.values(meta).some((x) => x && (x.fromCache || x.hasPendingWrites));
-    clearTimeout(offlineTimer);
-    if (!offline) { if (state.offline) { state.offline = false; render(); } return; }
-    offlineTimer = setTimeout(() => { state.offline = true; render(); }, 5000);
-  };
+  for (const k of Object.keys(meta)) delete meta[k];
+  const onMeta = (key, m) => { meta[key] = m; refreshSync(); };
   unsubs.push(subscribeBookings(state.code, (d, m) => { state.bookings = d; onMeta('bookings', m); render(); }, onErr));
   unsubs.push(subscribeEntries(state.code, (d, m) => { state.entries = d; onMeta('entries', m); render(); }, onErr));
   const quiet = (e) => console.warn(e);
-  unsubs.push(subscribeReminders(state.code, (d) => { state.reminders = d; render(); }, quiet));
+  unsubs.push(subscribeReminders(state.code, (d, m) => { state.reminders = d; onMeta('reminders', m); render(); }, quiet));
   unsubs.push(subscribeSetup(state.code, (s) => {
     state.setup = sanitizeSetup(s);
     state.setupLoaded = true;
@@ -76,7 +97,8 @@ export function startSync() {
 
 export function stopSync() {
   clearTimeout(offlineTimer);
-  state.offline = false;
+  offlineTimer = null;
+  state.sync = 'connecting';
   unsubs.forEach((u) => u());
   unsubs = [];
   state.bookings = [];

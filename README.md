@@ -33,7 +33,18 @@ Vite + Vanilla JS + Firebase Firestore (offlinefähig via `persistentLocalCache`
 ```bash
 npm install
 npm run dev
+npm test           # Vitest: Datums-, Auswertungs-, Abrechnungs-, CSV-/Backup- und Einladungslogik
+npm run typecheck  # TypeScript-Prüfung der JSDoc-Typen (src/lib streng, Rest locker)
+npm run check      # Typecheck + Tests + Build
 ```
+
+### Aufbau
+
+- `src/lib/` – reine Fachlogik ohne DOM/Firebase (`util.js`, `model.js`, `csv.js`), vollständig getestet (`test/`)
+- `src/state.js` – UI-Zustand und Einstellungen, `src/household.js` – Haushalt, Sync, Sync-Status
+- `src/views/` – Kalender, Kosten, Fristen, Auswertung, Einstellungen, Setup, Import/Export
+- `src/render.js` – Rendering inkl. Fokus-Management, `src/main.js` – Events, Tastatur, Wischgesten, Start
+- `src/pwa.js` – Service Worker (vite-plugin-pwa): App-Shell offline, Hinweis bei neuer Version
 
 ## Setup
 

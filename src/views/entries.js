@@ -1,5 +1,5 @@
 import { addItem } from '../firebase.js';
-import { TYPES, entryType, lastOdometer, payerOf, sortEntries, validateEntry } from '../lib/model.js';
+import { TYPES, entryType, lastOdometer, odometerIssues, payerOf, sortEntries, validateEntry } from '../lib/model.js';
 import { esc, eur, fmtDate, isoDate, monthLabel, num, parseNum } from '../lib/util.js';
 import { render } from '../render.js';
 import { carName, carOf, cars, cc, isCombustion, pc, people, personName, state, typeLabel, unit } from '../state.js';
@@ -34,9 +34,9 @@ export function renderEntrySheet() {
   const last = lastOdometer(state.entries, car);
   return `
     <div class="overlay" data-action="close-entry">
-      <form class="dialog" id="entry-form">
+      <form class="dialog" id="entry-form" role="dialog" aria-modal="true" aria-labelledby="entry-title">
         <div class="sheet-head">
-          <h3>Neuer Eintrag</h3>
+          <h3 id="entry-title">Neuer Eintrag</h3>
           <button class="icon-btn" type="button" data-action="close-entry" aria-label="Schließen">✕</button>
         </div>
         <div class="seg">
@@ -53,7 +53,8 @@ export function renderEntrySheet() {
           <label id="amount-wrap"><span>Menge in <b id="unit">${unit(car)}</b></span><input name="amount" inputmode="decimal" placeholder="0,0"></label>
           <label><span>Kosten in €</span><input name="cost" inputmode="decimal" placeholder="0,00" required></label>
         </div>
-        <p class="preview muted small" id="entry-preview">&nbsp;</p>
+        <p class="preview muted small" id="entry-preview" aria-live="polite">&nbsp;</p>
+        <p class="warn" id="odo-warn" role="alert" hidden></p>
         <label class="check" id="full-wrap">
           <input type="checkbox" name="full" checked> Vollgetankt
         </label>
@@ -72,7 +73,7 @@ export function renderEntrySheet() {
 // Felder je nach Auto und Art ein-/ausblenden
 export function updateEntryForm(form) {
   const f = new FormData(form);
-  const car = f.get('car');
+  const car = String(f.get('car'));
   const fuel = f.get('type') === 'fuel';
   form.querySelector('#unit').textContent = unit(car);
   form.querySelector('#amount-wrap').hidden = !fuel;
@@ -85,17 +86,21 @@ export function updateEntryForm(form) {
 
 export function updateEntryPreview(form) {
   const f = new FormData(form);
-  const car = f.get('car');
+  const car = String(f.get('car'));
   const amount = parseNum(f.get('amount'));
   const cost = parseNum(f.get('cost'));
   const odoRaw = String(f.get('odometer') || '').trim();
   const odo = Number(odoRaw);
+  const date = String(f.get('date') || '');
   const last = lastOdometer(state.entries, car);
   const parts = [];
   if (f.get('type') === 'fuel' && amount > 0 && cost >= 0) parts.push(`${num.format(cost / amount)} €/${unit(car)}`);
-  if (odoRaw && last >= 0 && Number.isInteger(odo) && odo > last) parts.push(`+${num.format(odo - last)} km seit letztem Eintrag`);
-  if (odoRaw && last >= 0 && Number.isInteger(odo) && odo < last) parts.push(`Kilometerstand unter letztem Wert (${num.format(last)})`);
+  const issues = odoRaw && Number.isInteger(odo) && date ? odometerIssues(state.entries, car, date, odo) : [];
+  if (!issues.length && odoRaw && last >= 0 && Number.isInteger(odo) && odo > last) parts.push(`+${num.format(odo - last)} km seit letztem Eintrag`);
   form.querySelector('#entry-preview').innerHTML = parts.length ? esc(parts.join(' · ')) : '&nbsp;';
+  const warn = form.querySelector('#odo-warn');
+  warn.textContent = issues.join(' · ');
+  warn.hidden = !issues.length;
 }
 
 export function entryItem(e) {
@@ -122,7 +127,7 @@ export function entryItem(e) {
 }
 
 export function onEntryCarChange(form) {
-  const car = new FormData(form).get('car');
+  const car = String(new FormData(form).get('car'));
   state.entryCar = car;
   const last = lastOdometer(state.entries, car);
   form.elements.odometer.value = last >= 0 ? last : '';
@@ -138,8 +143,8 @@ export function submitEntry(form) {
   }, state.setup, state.name);
   if (res.error) return toast(res.error);
   const data = res.data;
-  const last = lastOdometer(state.entries, data.car);
-  if (data.odometer != null && data.odometer < last && !confirm(`Kilometerstand ${num.format(data.odometer)} ist kleiner als der letzte (${num.format(last)}). Trotzdem speichern?`)) return;
+  const issues = data.odometer != null ? odometerIssues(state.entries, data.car, data.date, data.odometer) : [];
+  if (issues.length && !confirm(`${issues.join('\n')}\n\nTrotzdem speichern?`)) return;
   addItem(state.code, 'entries', data).catch((e) => toast('Fehler: ' + e.message));
   state.entryType = data.type;
   state.entrySheet = false;

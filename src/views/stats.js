@@ -63,7 +63,7 @@ export function renderStats() {
   return `
     <section class="card">
       <div class="seg">
-        ${PERIODS.map((p) => `<button class="seg-opt btn-seg ${p.id === state.statsPeriod ? 'active' : ''}" data-action="period" data-period="${p.id}">${p.label}</button>`).join('')}
+        ${PERIODS.map((p) => `<button class="seg-opt btn-seg ${p.id === state.statsPeriod ? 'active' : ''}" data-action="period" data-period="${p.id}" aria-pressed="${p.id === state.statsPeriod}">${p.label}</button>`).join('')}
       </div>
     </section>
     ${renderSettlement(from)}

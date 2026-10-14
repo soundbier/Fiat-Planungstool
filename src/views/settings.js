@@ -8,9 +8,11 @@ import { errText, toast } from '../ui.js';
 import { inviteBox } from './setup.js';
 
 /* ---------- Settings ---------- */
+const SWATCH_NAMES = ['Blau', 'Rot', 'Petrol', 'Lila', 'Orange', 'Grün', 'Pink', 'Grau'];
+
 export function segPref(key, options, cur) {
   return `<div class="seg">${options.map(([v, l]) => `
-    <button class="seg-opt btn-seg ${v === cur ? 'active' : ''}" data-action="pref" data-key="${key}" data-value="${v}">${l}</button>`).join('')}</div>`;
+    <button class="seg-opt btn-seg ${v === cur ? 'active' : ''}" data-action="pref" data-key="${key}" data-value="${v}" aria-pressed="${v === cur}">${l}</button>`).join('')}</div>`;
 }
 
 export function renderSettings() {
@@ -19,7 +21,7 @@ export function renderSettings() {
     <section class="card">
       <h3>Du bist</h3>
       <div class="seg">${people().map((p) => `
-        <button class="seg-opt btn-seg pc ${p.id === state.name ? 'active' : ''}"${pc(p.id)} data-action="set-name" data-name="${p.id}">${esc(p.name)}</button>`).join('')}</div>
+        <button class="seg-opt btn-seg pc ${p.id === state.name ? 'active' : ''}"${pc(p.id)} data-action="set-name" data-name="${p.id}" aria-pressed="${p.id === state.name}">${esc(p.name)}</button>`).join('')}</div>
     </section>
     <section class="card">
       <h3>Personen & Autos</h3>
@@ -54,8 +56,8 @@ export function renderSettings() {
       ${segPref('scheme', [['warm', 'Warm'], ['cool', 'Kühl'], ['green', 'Grün'], ['contrast', 'Kontrast']], prefs.scheme)}
       ${people().map((p, i) => { const k = p.id; const cur = prefs.colors[k] || SWATCHES[i % SWATCHES.length]; return `
       <p class="set-label">Farbe ${esc(p.name)}</p>
-      <div class="swatches">${SWATCHES.map((c) => `
-        <button class="swatch ${cur === c ? 'active' : ''}" style="background:${c}" data-action="pref" data-key="color-${k}" data-value="${c}" aria-label="Farbe ${c}"></button>`).join('')}</div>`; }).join('')}
+      <div class="swatches" role="group" aria-label="Farbe ${esc(p.name)}">${SWATCHES.map((c, j) => `
+        <button class="swatch ${cur === c ? 'active' : ''}" style="background:${c}" data-action="pref" data-key="color-${k}" data-value="${c}" aria-label="${SWATCH_NAMES[j]}" aria-pressed="${cur === c}"></button>`).join('')}</div>`; }).join('')}
       <p class="set-label">Schriftgröße</p>
       ${segPref('size', [['normal', 'Normal'], ['large', 'Groß']], prefs.size)}
       <p class="set-label">Start-Ansicht</p>
@@ -152,9 +154,11 @@ export function removeFromSetup(kind, id) {
   if (!item) return;
   if (list.length <= 1) return toast(kind === 'person' ? 'Mindestens eine Person nötig' : 'Mindestens ein Auto nötig');
   const what = kind === 'person' ? 'Person' : 'Auto';
-  if (!confirm(`${what} „${item.name}“ entfernen? Bestehende Einträge bleiben erhalten, werden aber nicht mehr zugeordnet.`)) return;
+  const before = structuredClone(state.setup);
   const setup = structuredClone(state.setup);
   if (kind === 'person') setup.people = setup.people.filter((p) => p.id !== id);
   else setup.cars = setup.cars.filter((c) => c.id !== id);
-  storeSetup(setup, `${what} entfernt`);
+  storeSetup(setup);
+  // Bestehende Einträge bleiben erhalten; Wiederherstellen ordnet sie wieder zu
+  toast(`${what} „${item.name}“ entfernt`, { label: 'Rückgängig', run: () => storeSetup(before, 'Wiederhergestellt') });
 }

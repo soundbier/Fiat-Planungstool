@@ -230,7 +230,7 @@ legend { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
 .day.today .day-num { font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
 .day.in-week { border-color: var(--muted); }
 .chip {
-  display: block; font-size: 9px; line-height: 1.5; color: #fff; border-radius: 2px;
+  display: block; font-size: 10px; line-height: 1.5; color: #fff; border-radius: 2px;
   padding: 0 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left;
 }
 .chip.pc { background: var(--pc); }
@@ -392,3 +392,35 @@ label.check { flex-direction: row; align-items: center; gap: 10px; font-size: 15
 .settle td:first-child, .settle th:first-child { text-align: left; }
 .pos { color: var(--ok, #2f7a3a); }
 .neg { color: var(--danger); }
+
+/* Kopfzeile, Sync-Status */
+.topbar-title { font: inherit; margin: 0; }
+.topbar-right { display: flex; align-items: center; gap: 12px; }
+.sync { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 500; color: var(--muted); }
+.sync i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.sync.synced i { background: #2f8a46; }
+.sync.synced .sync-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.sync.pending i, .sync.connecting i { background: #c28a1b; animation: pulse 1.2s ease-in-out infinite; }
+.sync.offline { color: var(--danger); }
+@keyframes pulse { 50% { opacity: .3; } }
+@media (prefers-reduced-motion: reduce) { .sync i { animation: none !important; } .dialog { animation: none; } }
+
+/* Kalender: Ansicht, Woche */
+.cal .seg-sm { margin: -4px 0 10px; }
+.seg-sm .btn-seg { padding: 6px; font-size: 14px; }
+.cal-head h2 small { font-size: 13px; font-weight: 400; margin-left: 4px; }
+.week-list { list-style: none; margin: 0; padding: 0; }
+.week-day {
+  display: flex; gap: 12px; width: 100%; text-align: left; font: inherit; color: var(--text);
+  background: none; border: 0; border-top: 1px solid var(--border); padding: 10px 2px;
+}
+.week-list li:first-child .week-day { border-top: 0; }
+.week-day .wd { width: 52px; flex-shrink: 0; font-size: 14px; }
+.week-day .wd-cars { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.week-day.today .wd b { text-decoration: underline; text-underline-offset: 3px; }
+.week-day.past { opacity: .65; }
+.cal, .dialog { touch-action: pan-y; }
+
+/* Sichtbarer Tastaturfokus */
+:where(button, [tabindex], a, .ov-due):focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

@@ -42,9 +42,9 @@ export function renderReminderSheet() {
   const ivs = [...new Set([0, 1, 3, 6, 12, 24, 36, iv])].sort((a, b) => a - b);
   return `
     <div class="overlay" data-action="close-reminder">
-      <form class="dialog" id="reminder-form" data-id="${esc(r?.id || '')}">
+      <form class="dialog" id="reminder-form" data-id="${esc(r?.id || '')}" role="dialog" aria-modal="true" aria-labelledby="reminder-title">
         <div class="sheet-head">
-          <h3>${r ? 'Frist bearbeiten' : 'Neue Frist'}</h3>
+          <h3 id="reminder-title">${r ? 'Frist bearbeiten' : 'Neue Frist'}</h3>
           <button class="icon-btn" type="button" data-action="close-reminder" aria-label="Schließen">✕</button>
         </div>
         <div class="seg">
