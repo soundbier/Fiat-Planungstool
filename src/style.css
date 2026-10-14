@@ -242,3 +242,54 @@ legend { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
   font-size: 14px; z-index: 100; animation: fade 2.2s ease forwards;
 }
 @keyframes fade { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
+
+/* Übersicht Heute/Morgen */
+.overview { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+.overview .card { margin: 0; }
+.ov-day {
+  font: inherit; color: var(--text); text-align: left; border: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 8px; padding: 12px;
+}
+.ov-day:active { opacity: .7; }
+.ov-label { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.ov-row { display: flex; justify-content: space-between; align-items: center; gap: 6px; font-size: 14px; }
+.ov-car { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pill { font-size: 13px; font-weight: 600; padding: 2px 8px; border-radius: 999px; color: #fff; flex-shrink: 0; }
+.pill.lukas { background: var(--lukas); }
+.pill.marie { background: var(--marie); }
+.pill.free { background: none; color: var(--muted); border: 1px dashed var(--border); font-weight: 400; }
+
+/* Kalender-Feinschliff */
+.cal-head h2 { flex: 1; text-align: center; }
+.btn-text { border: 0; background: none; color: var(--text); font: inherit; font-size: 14px; font-weight: 600; padding: 8px; text-decoration: underline; text-underline-offset: 3px; }
+.day:active { opacity: .6; }
+.day.past { opacity: .55; }
+.day.today { background: var(--card); border-color: var(--text); }
+.week-pick { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.week-label { display: flex; flex-direction: column; align-items: center; font-size: 15px; }
+.week-label .muted { font-size: 13px; }
+
+/* Bottom-Sheets */
+.sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.sheet-head h3 { margin: 0; flex: 1; text-align: center; }
+.dialog { display: flex; flex-direction: column; gap: 12px; max-height: 92vh; max-height: 92dvh; overflow-y: auto; }
+.dialog::before { content: ''; width: 36px; height: 4px; border-radius: 2px; background: var(--border); align-self: center; margin-top: -8px; }
+.center { text-align: center; }
+label > span { display: block; }
+.preview { min-height: 1.4em; margin: -4px 0 0; }
+
+/* Tanken/Laden */
+.add-btn { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 12px; }
+.add-btn .tab-icon { width: 20px; height: 20px; stroke-width: 2.25; }
+.group-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+.group-head h3 { margin: 0; }
+.empty-state { text-align: center; padding: 28px 20px; }
+.empty-state p { margin: 0 0 6px; }
+
+/* Toast mit Aktion */
+.toast { display: flex; align-items: center; gap: 14px; max-width: calc(100vw - 32px); }
+.toast.has-action { animation: fade-long 5s ease forwards; }
+.toast button { border: 0; background: none; color: inherit; font: inherit; font-weight: 700; text-decoration: underline; padding: 4px 0; }
+@keyframes fade-long { 0%, 90% { opacity: 1; } 100% { opacity: 0; } }
+.toast span { white-space: nowrap; }
+#entry-form .sheet-head h3 { text-align: left; }
