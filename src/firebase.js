@@ -45,8 +45,8 @@ export const updateItem = (code, name, id, data) =>
   updateDoc(doc(db, 'households', code, name, id), data);
 
 export function subscribeReminders(code, cb, onError) {
-  return onSnapshot(col(code, 'reminders'),
-    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))), onError);
+  return onSnapshot(col(code, 'reminders'), { includeMetadataChanges: true },
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() })), snap.metadata), onError);
 }
 
 const setupRef = (code) => doc(db, 'households', code, 'meta', 'setup');

@@ -6,13 +6,19 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc -p jsconfig.json && tsc -p jsconfig.app.json",
+    "check": "npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
     "firebase": "^11.0.0",
     "qrcode-generator": "^1.4.4"
   },
   "devDependencies": {
-    "vite": "^6.0.0"
+    "typescript": "^7.0.2",
+    "vite": "^6.0.0",
+    "vite-plugin-pwa": "^2.0.0",
+    "vitest": "^5.0.4"
   }
 }

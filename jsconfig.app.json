@@ -1,0 +1,5 @@
+{
+  "extends": "./jsconfig.json",
+  "compilerOptions": { "checkJs": true, "strict": false, "noImplicitAny": false, "noUnusedLocals": true },
+  "include": ["src/**/*.js", "src/env.d.ts"]
+}
