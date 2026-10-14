@@ -1,9 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" fill="#1b1b1a"/>
-  <path d="M120 300l28-84c6-18 22-30 41-30h134c19 0 35 12 41 30l28 84" fill="none" stroke="#fff" stroke-width="28" stroke-linejoin="round"/>
-  <rect x="96" y="290" width="320" height="90" rx="28" fill="#fff"/>
-  <circle cx="168" cy="335" r="20" fill="#1b1b1a"/>
-  <circle cx="344" cy="335" r="20" fill="#1b1b1a"/>
-  <rect x="120" y="370" width="56" height="44" rx="12" fill="#fff"/>
-  <rect x="336" y="370" width="56" height="44" rx="12" fill="#fff"/>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#25726a"/>
+      <stop offset="1" stop-color="#174f49"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <!-- Kalenderblatt -->
+  <rect x="112" y="128" width="288" height="264" rx="40" fill="#f6f4ef"/>
+  <path d="M112 168a40 40 0 0 1 40-40h208a40 40 0 0 1 40 40v28H112z" fill="#e9844d"/>
+  <rect x="172" y="100" width="24" height="64" rx="12" fill="#f6f4ef"/>
+  <rect x="316" y="100" width="24" height="64" rx="12" fill="#f6f4ef"/>
+  <!-- Auto -->
+  <path d="M170 318l20-46c5-12 16-19 29-19h74c13 0 24 7 29 19l20 46" fill="none" stroke="#1b2b29" stroke-width="18" stroke-linejoin="round" stroke-linecap="round"/>
+  <rect x="152" y="306" width="208" height="50" rx="20" fill="#1b2b29"/>
+  <circle cx="196" cy="331" r="10" fill="#f6f4ef"/>
+  <circle cx="316" cy="331" r="10" fill="#f6f4ef"/>
+  <rect x="168" y="346" width="40" height="22" rx="8" fill="#1b2b29"/>
+  <rect x="304" y="346" width="40" height="22" rx="8" fill="#1b2b29"/>
 </svg>
