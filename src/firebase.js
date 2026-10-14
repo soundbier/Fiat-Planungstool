@@ -14,7 +14,9 @@ if (missingConfigKeys.length) {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+  // WebChannel-Streams werden von manchen Adblockern/Proxys/Virenscannern blockiert.
+  experimentalForceLongPolling: true
 });
 
 export function ensureAuth() {
@@ -29,8 +31,8 @@ export function ensureAuth() {
 const col = (code, name) => collection(db, 'households', code, name);
 
 export function subscribeEntries(code, cb, onError) {
-  return onSnapshot(query(col(code, 'entries'), orderBy('date', 'desc')),
-    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+  return onSnapshot(query(col(code, 'entries'), orderBy('date', 'desc')), { includeMetadataChanges: true },
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() })), snap.metadata),
     onError);
 }
 
@@ -40,8 +42,8 @@ export const deleteItem = (code, name, id) =>
   deleteDoc(doc(db, 'households', code, name, id));
 
 export function subscribeBookings(code, cb, onError) {
-  return onSnapshot(col(code, 'bookings'),
-    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+  return onSnapshot(col(code, 'bookings'), { includeMetadataChanges: true },
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() })), snap.metadata),
     onError);
 }
 

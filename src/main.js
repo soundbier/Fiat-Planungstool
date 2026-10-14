@@ -147,13 +147,24 @@ async function shareHousehold() {
 
 /* ---------- Data ---------- */
 
+let offlineTimer = null;
 function startSync() {
   stopSync();
   const onErr = (e) => { console.error(e); state.error = 'Synchronisation fehlgeschlagen: ' + e.message; render(); };
-  unsubs.push(subscribeBookings(state.code, (d) => { state.bookings = d; render(); }, onErr));
-  unsubs.push(subscribeEntries(state.code, (d) => { state.entries = d; render(); }, onErr));
+  const meta = { bookings: null, entries: null };
+  const onMeta = (key, m) => {
+    meta[key] = m;
+    const offline = Object.values(meta).some((x) => x && (x.fromCache || x.hasPendingWrites));
+    clearTimeout(offlineTimer);
+    if (!offline) { if (state.offline) { state.offline = false; render(); } return; }
+    offlineTimer = setTimeout(() => { state.offline = true; render(); }, 5000);
+  };
+  unsubs.push(subscribeBookings(state.code, (d, m) => { state.bookings = d; onMeta('bookings', m); render(); }, onErr));
+  unsubs.push(subscribeEntries(state.code, (d, m) => { state.entries = d; onMeta('entries', m); render(); }, onErr));
 }
 function stopSync() {
+  clearTimeout(offlineTimer);
+  state.offline = false;
   unsubs.forEach((u) => u());
   unsubs = [];
   state.bookings = [];
@@ -180,37 +191,64 @@ function leaveHousehold() {
 function renderSetup() {
   const step = state.setupStep;
   let body = '';
+  const steps = step === 'name' ? 2 : 1;
+  const dots = `<div class="setup-steps" aria-hidden="true"><span class="on"></span><span class="${steps > 1 ? 'on' : ''}"></span></div>`;
   if (step === 'start') {
     body = `
-      <h1>Autoplaner</h1>
-      <p class="muted">Wer fährt wann welches Auto – und was es kostet.</p>
-      <button class="btn primary block" data-action="create">Neuen Haushalt erstellen</button>
-      <button class="btn block" data-action="goto-join">Haushalt beitreten</button>`;
+      <div class="setup-hero">
+        <img class="setup-logo" src="/icon.svg" alt="" width="88" height="88">
+        <h1>Autoplaner</h1>
+        <p class="muted">Wer fährt wann welches Auto – und was es kostet.</p>
+      </div>
+      <div class="setup-card">
+        <button class="btn primary block lg" data-action="create">Neuen Haushalt erstellen</button>
+        <button class="btn block lg" data-action="goto-join">Bestehendem Haushalt beitreten</button>
+      </div>
+      <p class="muted small setup-foot">Kein Konto nötig – der Zugang erfolgt über einen geheimen Haushaltscode.</p>`;
   } else if (step === 'created') {
     const link = shareLink(state.newCode);
     body = `
-      <h1>Haushalt erstellt</h1>
-      <p class="muted">Code oder QR-Code an die zweite Person weitergeben. Wer den Code hat, hat Zugriff.</p>
-      <div class="code-box">${esc(state.newCode)}</div>
-      <button class="btn block" data-action="copy" data-text="${esc(state.newCode)}">Code kopieren</button>
-      <button class="btn block" data-action="copy" data-text="${esc(link)}">Link kopieren</button>
-      <div class="qr">${qrSvg(link)}</div>
-      <button class="btn primary block" data-action="confirm-created">Weiter</button>`;
+      ${dots}
+      <div class="setup-hero compact">
+        <h1>Haushalt erstellt</h1>
+        <p class="muted">Teile den QR-Code oder Link mit der zweiten Person.</p>
+      </div>
+      <div class="setup-card">
+        <div class="qr">${qrSvg(link)}</div>
+        <div class="code-box">${esc(state.newCode)}</div>
+        <div class="btn-row">
+          <button class="btn" data-action="copy" data-text="${esc(state.newCode)}">Code kopieren</button>
+          <button class="btn" data-action="copy" data-text="${esc(link)}">Link kopieren</button>
+        </div>
+        <p class="muted small">Wer den Code hat, hat Zugriff – nur vertrauenswürdig teilen.</p>
+      </div>
+      <button class="btn primary block lg" data-action="confirm-created">Weiter</button>`;
   } else if (step === 'join') {
     body = `
-      <h1>Haushalt beitreten</h1>
-      <form id="join-form">
+      ${dots}
+      <div class="setup-hero compact">
+        <h1>Haushalt beitreten</h1>
+        <p class="muted">Füge den Code ein, den du erhalten hast – oder scanne den QR-Code mit der Kamera.</p>
+      </div>
+      <form id="join-form" class="setup-card">
         <label>Haushaltscode
           <input name="code" autocomplete="off" autocapitalize="off" spellcheck="false" required placeholder="Code einfügen">
         </label>
         ${state.error ? `<p class="error">${esc(state.error)}</p>` : ''}
-        <button class="btn primary block" type="submit">Beitreten</button>
+        <button class="btn primary block lg" type="submit">Beitreten</button>
       </form>
       <button class="btn link block" data-action="back-start">Zurück</button>`;
   } else if (step === 'name') {
     body = `
-      <h1>Wer bist du?</h1>
-      ${PEOPLE.map((p) => `<button class="btn block person ${p.toLowerCase()}" data-action="set-name" data-name="${p}">${p}</button>`).join('')}`;
+      ${dots}
+      <div class="setup-hero compact">
+        <h1>Wer bist du?</h1>
+        <p class="muted">Lässt sich später in den Einstellungen ändern.</p>
+      </div>
+      <div class="person-grid">
+        ${PEOPLE.map((p) => `<button class="person-tile ${p.toLowerCase()}" data-action="set-name" data-name="${p}">
+          <span class="avatar">${esc(p[0])}</span><span>${esc(p)}</span></button>`).join('')}
+      </div>`;
   }
   app.innerHTML = `<main class="setup">${body}</main>`;
 }
@@ -769,6 +807,7 @@ function render() {
       <span class="me ${state.name.toLowerCase()}">${esc(state.name)}</span>
     </header>
     ${state.error ? `<div class="banner">${esc(state.error)}</div>` : ''}
+    ${state.offline && !state.error ? `<div class="banner">Keine Verbindung zum Server – Änderungen sind nur auf diesem Gerät gespeichert.</div>` : ''}
     <main class="content">${views[state.tab]()}</main>
     <nav class="tabbar">
       ${TABS.map((t) => `<button class="tab ${t.id === state.tab ? 'active' : ''}" data-action="tab" data-tab="${t.id}">
