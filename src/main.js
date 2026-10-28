@@ -10,6 +10,7 @@ import { app, blurActive, copyText, errText, focusBySelector, focusSelector, foc
 import { copyWeek, resetWeek, saveDayCar, updateDayWarning } from './views/calendar.js';
 import { exportCsv, exportJson, importFile } from './views/data.js';
 import { onEntryCarChange, submitEntry, updateEntryForm, updateEntryPreview } from './views/entries.js';
+import { submitKm } from './views/stats.js';
 import { deleteReminder, reminderDone, submitReminder } from './views/reminders.js';
 import { removeFromSetup, submitSetup } from './views/settings.js';
 
@@ -192,6 +193,7 @@ app.addEventListener('submit', (ev) => {
   if (form.id === 'entry-form') submitEntry(form);
   else if (form.id === 'reminder-form') submitReminder(form);
   else if (form.id === 'setup-form') submitSetup(form);
+  else if (form.classList.contains('km-form')) submitKm(form);
   else if (form.id === 'join-form' || form.id === 'switch-form') {
     const parsed = parseInvite(new FormData(form).get('code'), location.origin);
     const isJoin = form.id === 'join-form';

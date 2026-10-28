@@ -64,11 +64,12 @@ service cloud.firestore {
       return d.keys().hasOnly(['car', 'type', 'date', 'odometer', 'amount', 'cost', 'full', 'note', 'createdBy', 'paidBy', 'createdAt'])
         && d.keys().hasAll(['car', 'date', 'cost', 'note', 'createdBy', 'createdAt'])
         && validId(d.car)
-        && d.get('type', 'fuel') in ['fuel', 'service', 'parking', 'toll', 'insurance', 'tax', 'other']
+        && d.get('type', 'fuel') in ['fuel', 'service', 'parking', 'toll', 'insurance', 'tax', 'other', 'odo']
         && validDate(d.date)
         && (!('odometer' in d) || (d.odometer is int && d.odometer >= 0 && d.odometer < 10000000))
         && (!('amount' in d) || (d.amount is number && d.amount > 0 && d.amount < 10000))
         && (d.get('type', 'fuel') != 'fuel' || ('amount' in d && 'odometer' in d))
+        && (d.get('type', 'fuel') != 'odo' || ('odometer' in d && d.cost == 0))
         && (!('full' in d) || d.full is bool)
         && d.cost is number && d.cost >= 0 && d.cost < 100000
         && d.note is string && d.note.size() <= 300

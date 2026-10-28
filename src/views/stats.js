@@ -1,4 +1,6 @@
-import { carStats, consumptionSeries, settlement } from '../lib/model.js';
+import { carStats, consumptionSeries, kmTrend, odometerIssues, settlement, validateEntry, weekdayUsage } from '../lib/model.js';
+import { addItem } from '../firebase.js';
+import { toast } from '../ui.js';
 import { esc, eur, isoDate, num } from '../lib/util.js';
 import { cars, cc, isCombustion, pc, personName, state, today, unit } from '../state.js';
 
@@ -16,7 +18,7 @@ export function periodStart() {
   return '0000-00-00';
 }
 
-export function barChart(months, car) {
+export function barChart(months, car, fmt = (v) => eur.format(v), label = 'Kosten pro Monat') {
   if (!months.length) return '<p class="muted">Keine Daten.</p>';
   const barW = 28, gap = 10, h = 140, top = 18, bottom = 22;
   const max = Math.max(1, ...months.map((m) => m.value));
@@ -26,13 +28,13 @@ export function barChart(months, car) {
     const x = gap + i * (barW + gap);
     const y = h - bottom - bh;
     return `<g>
-      <title>${esc(m.label)}: ${eur.format(m.value)}</title>
+      <title>${esc(m.label)}: ${fmt(m.value)}</title>
       <rect x="${x}" y="${y}" width="${barW}" height="${Math.max(bh, m.value > 0 ? 1 : 0)}" rx="2" class="bar cc"/>
       ${m.value > 0 ? `<text x="${x + barW / 2}" y="${y - 4}" class="bar-val">${Math.round(m.value)}</text>` : ''}
       <text x="${x + barW / 2}" y="${h - 6}" class="bar-lbl">${esc(m.label)}</text>
     </g>`;
   }).join('');
-  return `<div class="chart-scroll"><svg class="chart"${cc(car)} viewBox="0 0 ${width} ${h}" width="${width}" height="${h}" role="img" aria-label="Kosten pro Monat">
+  return `<div class="chart-scroll"><svg class="chart"${cc(car)} viewBox="0 0 ${width} ${h}" width="${width}" height="${h}" role="img" aria-label="${label}">
     <line x1="0" y1="${h - bottom}" x2="${width}" y2="${h - bottom}" class="axis"/>${bars}</svg></div>`;
 }
 
@@ -75,6 +77,50 @@ export function renderSettlement(from) {
     </section>`;
 }
 
+export function renderWeekdays(from) {
+  const rows = weekdayUsage({ setup: state.setup, bookings: state.bookings, from, today: today() }).filter((r) => r.weeks);
+  if (!rows.length) return '';
+  const ids = state.setup.people.map((p) => p.id);
+  return `
+    <section class="card">
+      <h3>Werktage pro Woche</h3>
+      <table class="settle">
+        <tr><th>Person</th>${rows.map((r) => `<th>${esc(r.car.name)}</th>`).join('')}</tr>
+        ${ids.map((i) => `<tr><td><i class="dot pc"${pc(i)}></i> ${esc(personName(i))}</td>
+          ${rows.map((r) => `<td>${num.format(Math.round(r.perWeek[i] * 10) / 10)}</td>`).join('')}</tr>`).join('')}
+      </table>
+      <p class="hint">Ø gebuchte Tage Mo–Fr je Woche, ab der ersten Buchung im Zeitraum bis heute.</p>
+    </section>`;
+}
+
+function renderKm(c, from) {
+  const t = kmTrend(state.entries, c.id, from, today());
+  const km = (v) => `${num.format(Math.round(v))} km`;
+  const arrow = !t || Math.abs(t.trend) < 0.1 ? '' : t.trend > 0 ? ' ↑' : ' ↓';
+  return `
+    <h4>Kilometerstand</h4>
+    ${t ? `<ul class="kv">
+      <li><span>Aktuell (${esc(t.date.split('-').reverse().join('.'))})</span><span>${km(t.odometer)}</span></li>
+      ${t.perMonth != null ? `<li><span>Ø pro Monat</span><span>${km(t.perMonth)}</span></li>
+      <li><span>Hochgerechnet pro Jahr</span><span>${km(t.perYear)}</span></li>` : ''}
+      ${t.recentPerMonth != null ? `<li><span>Tendenz (letzte 90 Tage)</span><span>${km(t.recentPerMonth)} /Monat${arrow}</span></li>` : ''}
+    </ul>` : ''}
+    <form class="km-form row" data-car="${esc(c.id)}">
+      <input name="odometer" inputmode="numeric" pattern="[0-9]*" placeholder="Gesamt-km" aria-label="Kilometerstand ${esc(c.name)}" required>
+      <button class="btn primary">Eintragen</button>
+    </form>
+    ${t && t.months.some((m) => m.value) ? `<h4>Kilometer pro Monat</h4>${barChart(t.months, c.id, km, 'Kilometer pro Monat')}` : ''}`;
+}
+
+export function submitKm(form) {
+  const res = validateEntry({ car: form.dataset.car, type: 'odo', date: today(), odometer: new FormData(form).get('odometer'), note: '' }, state.setup, state.name);
+  if (res.error) return toast(res.error);
+  const issues = odometerIssues(state.entries, res.data.car, res.data.date, /** @type {number} */ (res.data.odometer));
+  if (issues.length && !confirm(`${issues.join('\n')}\n\nTrotzdem speichern?`)) return;
+  addItem(state.code, 'entries', res.data).catch((e) => toast('Fehler: ' + e.message));
+  toast('Kilometerstand gespeichert');
+}
+
 export function renderStats() {
   const from = periodStart();
   return `
@@ -84,6 +130,7 @@ export function renderStats() {
       </div>
     </section>
     ${renderSettlement(from)}
+    ${renderWeekdays(from)}
     ${cars().map((c) => {
       const s = carStats(state.entries, c.id, from);
       const u = unit(c.id);
@@ -108,6 +155,7 @@ export function renderStats() {
           ${isCombustion(c.id) ? '<p class="hint">Verbrauch stimmt nur, wenn jedes Mal vollgetankt wurde.</p>' : ''}
           ${s.fuelCount === 1 ? '<p class="muted small">Verbrauch ab zwei Tank-/Ladeeinträgen.</p>' : ''}
           ${series.length > 1 ? `<h4>Verbrauch je ${isCombustion(c.id) ? 'Tankfüllung' : 'Ladung'}</h4>${lineChart(series, c.id, u)}` : ''}
+          ${renderKm(c, from)}
           <h4>Kosten pro Monat</h4>
           ${barChart(s.months, c.id)}
         </section>`;

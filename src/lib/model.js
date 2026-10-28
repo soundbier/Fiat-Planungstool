@@ -1,13 +1,13 @@
 // @ts-check
 // Fachlogik: Stammdaten, Validierung, Auswertung, Abrechnung. Ohne DOM/Firebase, daher testbar.
-import { DATE_RE, parseNum, round2, daysBetween, addMonths } from './util.js';
+import { DATE_RE, parseNum, round2, daysBetween, addDays, addMonths } from './util.js';
 
 /** @typedef {import('./util.js').IsoDate} IsoDate */
 /** @typedef {{ id: string, name: string }} Person */
 /** @typedef {'electric' | 'fuel'} CarKind */
 /** @typedef {{ id: string, name: string, short: string, kind: CarKind }} Car */
 /** @typedef {{ people: Person[], cars: Car[] }} Setup */
-/** @typedef {'fuel' | 'service' | 'parking' | 'toll' | 'insurance' | 'tax' | 'other'} EntryType */
+/** @typedef {'fuel' | 'service' | 'parking' | 'toll' | 'insurance' | 'tax' | 'other' | 'odo'} EntryType */
 /**
  * Kosteneintrag. `type` fehlt bei alten Einträgen (= fuel), `paidBy` fehlt bei alten (= createdBy).
  * @typedef {{
@@ -52,7 +52,8 @@ export const TYPES = [
   { id: 'toll', label: 'Maut / Vignette' },
   { id: 'insurance', label: 'Versicherung' },
   { id: 'tax', label: 'Kfz-Steuer' },
-  { id: 'other', label: 'Sonstiges' }
+  { id: 'other', label: 'Sonstiges' },
+  { id: 'odo', label: 'Kilometerstand' }
 ];
 
 /** @type {[string, number][]} */
@@ -116,10 +117,10 @@ export function validateEntry(r, setup, me) {
   const odoRaw = String(r.odometer ?? '').trim();
   const odometer = odoRaw === '' ? null : Number(odoRaw);
   if (odometer !== null && !(Number.isInteger(odometer) && odometer >= 0 && odometer < 10000000)) return { error: 'Ungültiger Kilometerstand' };
-  if (type === 'fuel' && odometer === null) return { error: 'Kilometerstand fehlt' };
+  if ((type === 'fuel' || type === 'odo') && odometer === null) return { error: 'Kilometerstand fehlt' };
   const amount = parseNum(r.amount);
   if (type === 'fuel' && !(amount > 0 && amount < 10000)) return { error: 'Ungültige Menge' };
-  const cost = parseNum(r.cost);
+  const cost = type === 'odo' ? 0 : parseNum(r.cost);
   if (!(cost >= 0 && cost < 100000)) return { error: 'Ungültige Kosten' };
   const self = ID_RE.test(me) ? me : setup.people[0].id;
   const createdBy = ID_RE.test(r.createdBy || '') ? r.createdBy : self;
@@ -311,6 +312,69 @@ export function settlement({ setup, entries, bookings, from, today }) {
     }
   }
   return { ids, paid, share, balance, usage, transfers };
+}
+
+/**
+ * Gefahrene km je Monat (Differenz zum letzten Stand davor) und Tendenz aus allen Kilometerständen.
+ * @param {Entry[]} entries
+ * @param {string} car
+ * @param {IsoDate} from
+ * @param {IsoDate} today
+ */
+export function kmTrend(entries, car, from, today) {
+  const all = entries.filter((e) => e.car === car && Number.isFinite(e.odometer))
+    .map((e) => ({ date: e.date, odo: /** @type {number} */ (e.odometer) }))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.odo - b.odo);
+  const inRange = all.filter((r) => r.date >= from && r.date <= today);
+  if (!inRange.length) return null;
+  const last = inRange[inRange.length - 1];
+  const prev = all.filter((r) => r.date < from).pop();
+  const first = prev || inRange[0];
+  const days = daysBetween(first.date, last.date);
+  const perDay = days > 0 ? (last.odo - first.odo) / days : null;
+  // Tendenz: letzte 90 Tage gegenüber dem Durchschnitt
+  const cut = addDays(last.date, -90);
+  const base = [...all].reverse().find((r) => r.date <= cut);
+  const recentDays = base ? daysBetween(base.date, last.date) : 0;
+  const recent = recentDays > 0 ? (last.odo - /** @type {{ odo: number }} */ (base).odo) / recentDays : null;
+  const months = monthlyCosts(inRange.map((r) => /** @type {Entry} */ ({ date: r.date, cost: 0 }))).map((m) => {
+    const before = all.filter((r) => r.date < m.key + '-01').pop();
+    const end = all.filter((r) => r.date.startsWith(m.key)).pop();
+    return { ...m, value: before && end ? Math.max(0, end.odo - before.odo) : 0 };
+  });
+  return {
+    odometer: last.odo, date: last.date,
+    perMonth: perDay == null ? null : perDay * 30.44,
+    perYear: perDay == null ? null : perDay * 365,
+    recentPerMonth: recent == null ? null : recent * 30.44,
+    trend: recent == null || perDay == null || !perDay ? 0 : (recent - perDay) / perDay,
+    months
+  };
+}
+
+/**
+ * Ø gebuchte Werktage (Mo–Fr) pro Woche je Person und Auto, ab der ersten Buchung im Zeitraum bis `today`.
+ * @param {{ setup: Setup, bookings: Booking[], from: IsoDate, today: IsoDate }} p
+ */
+export function weekdayUsage({ setup, bookings, from, today }) {
+  const ids = setup.people.map((p) => p.id);
+  const isWorkday = (/** @type {IsoDate} */ d) => { const w = new Date(d + 'T12:00:00').getDay(); return w > 0 && w < 6; };
+  return setup.cars.map((c) => {
+    const list = bookings.filter((b) => b.car === c.id && b.date >= from && b.date <= today && isWorkday(b.date));
+    if (!list.length) return { car: c, weeks: 0, perWeek: /** @type {Record<string, number>} */ ({}) };
+    const start = list.reduce((m, b) => (b.date < m ? b.date : m), today);
+    let workdays = 0;
+    for (let d = start; d <= today; d = addDays(d, 1)) if (isWorkday(d)) workdays++;
+    const weeks = Math.max(1, workdays / 5);
+    /** @type {Record<string, number>} */
+    const perWeek = Object.fromEntries(ids.map((i) => [i, 0]));
+    for (const b of list) {
+      if (b.driver === ALL) for (const i of ids) perWeek[i]++;
+      else if (b.driver in perWeek) perWeek[b.driver]++;
+    }
+    for (const i of ids) perWeek[i] /= weeks;
+    return { car: c, weeks, perWeek };
+  });
 }
 
 /** @param {Reminder} r @param {IsoDate} today */

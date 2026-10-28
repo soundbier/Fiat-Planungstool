@@ -303,6 +303,8 @@ input, select, textarea {
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--primary); box-shadow: var(--ring); }
 :root[data-scheme="contrast"] :is(input, select, textarea) { border-color: var(--border); }
 .row { display: flex; gap: 10px; }
+.km-form { margin: 8px 0 4px; }
+.km-form input { flex: 1; min-width: 0; }
 .edit-row { display: flex; align-items: center; gap: var(--space-2); }
 .edit-row input.short { width: 64px; flex: none; }
 .edit-row select { width: auto; flex: none; }

@@ -82,7 +82,7 @@ export function renderEntrySheet() {
         </div>
         <div class="row">
           <label id="amount-wrap"><span>Menge in <b id="unit">${unit(car)}</b></span><input name="amount" inputmode="decimal" placeholder="0,0" value="${edit ? dec(edit.amount) : ''}"></label>
-          <label><span>Kosten in €</span><input name="cost" inputmode="decimal" placeholder="0,00" value="${edit ? dec(edit.cost) : ''}" required></label>
+          <label id="cost-wrap"><span>Kosten in €</span><input name="cost" inputmode="decimal" placeholder="0,00" value="${edit ? dec(edit.cost) : ''}" required></label>
         </div>
         <p class="preview muted small" id="entry-preview" aria-live="polite">&nbsp;</p>
         <p class="warn" id="odo-warn" role="alert" hidden></p>
@@ -112,11 +112,14 @@ export function updateEntryForm(form) {
   form.querySelector('#unit').textContent = unit(car);
   form.querySelector('#amount-wrap').hidden = !fuel;
   form.elements.amount.required = fuel;
-  form.elements.odometer.required = fuel;
-  form.querySelector('#odo-label').textContent = fuel ? 'Kilometerstand' : 'Kilometerstand (optional)';
+  const odo = f.get('type') === 'odo';
+  form.elements.odometer.required = fuel || odo;
+  form.querySelector('#odo-label').textContent = fuel || odo ? 'Kilometerstand' : 'Kilometerstand (optional)';
+  form.querySelector('#cost-wrap').hidden = odo;
+  form.elements.cost.required = !odo;
   form.querySelector('#full-wrap').hidden = !(fuel && isCombustion(car));
   const repeat = form.querySelector('#repeat-wrap');
-  if (repeat) repeat.hidden = fuel;
+  if (repeat) repeat.hidden = fuel || odo;
   updateEntryPreview(form);
 }
 
@@ -193,7 +196,7 @@ export function submitEntry(form) {
     render();
     return toast('Gespeichert');
   }
-  const repeat = data.type === 'fuel' ? 0 : Number(f.get('repeat')) || 0;
+  const repeat = data.type === 'fuel' || data.type === 'odo' ? 0 : Number(f.get('repeat')) || 0;
   let rec = null;
   if (repeat) {
     const r = recurringFromEntry(data, repeat);
