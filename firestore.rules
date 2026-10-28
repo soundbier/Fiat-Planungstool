@@ -73,8 +73,7 @@ service cloud.firestore {
         && d.cost is number && d.cost >= 0 && d.cost < 100000
         && d.note is string && d.note.size() <= 300
         && validId(d.createdBy)
-        && (!('paidBy' in d) || validId(d.paidBy))
-        && d.createdAt == request.time;
+        && (!('paidBy' in d) || validId(d.paidBy));
     }
 
     function validReminder(d) {
@@ -168,8 +167,10 @@ service cloud.firestore {
 
       match /entries/{id} {
         allow get, list: if isMember(code);
-        allow create: if isMember(code) && validEntry(request.resource.data);
-        allow update: if false;
+        allow create: if isMember(code) && validEntry(request.resource.data)
+          && request.resource.data.createdAt == request.time;
+        allow update: if isMember(code) && validEntry(request.resource.data)
+          && request.resource.data.createdAt == resource.data.createdAt;
         allow delete: if isMember(code);
       }
     }

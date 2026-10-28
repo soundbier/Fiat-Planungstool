@@ -97,7 +97,8 @@ app.addEventListener('click', (ev) => {
     case 'week':
       state.copyWeek = addDays(state.copyWeek || mondayOf(isoDate(new Date())), Number(el.dataset.delta));
       break;
-    case 'open-entry': state.returnFocus = focusSelector(el); state.entrySheet = true; break;
+    case 'open-entry': state.returnFocus = focusSelector(el); state.entryEdit = null; state.entrySheet = true; break;
+    case 'edit-entry': state.returnFocus = focusSelector(el); state.entryEdit = el.dataset.id; state.entrySheet = true; break;
     case 'open-reminder': state.returnFocus = focusSelector(el); state.reminderSheet = el.dataset.id || 'new'; break;
     case 'close-reminder':
       if (ev.target !== el && !el.matches('button')) return;
@@ -117,6 +118,7 @@ app.addEventListener('click', (ev) => {
     case 'close-entry':
       if (ev.target !== el && !el.matches('button')) return;
       state.entrySheet = false;
+      state.entryEdit = null;
       break;
     case 'close-day':
       if (ev.target !== el && !el.matches('button')) return; // Klicks im Dialog nicht als Overlay-Klick werten

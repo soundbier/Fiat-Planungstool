@@ -41,6 +41,8 @@ export const addItem = (code, name, data) =>
   addDoc(col(code, name), { ...data, createdAt: serverTimestamp() });
 export const deleteItem = (code, name, id) =>
   deleteDoc(doc(db, 'households', code, name, id));
+export const replaceItem = (code, name, id, data) =>
+  setDoc(doc(db, 'households', code, name, id), data);
 export const updateItem = (code, name, id, data) =>
   updateDoc(doc(db, 'households', code, name, id), data);
 

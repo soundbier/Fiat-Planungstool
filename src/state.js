@@ -21,7 +21,7 @@ export const DEFAULT_PREFS = { theme: 'system', scheme: 'warm', size: 'normal', 
  *   members: any[], config: { locked: boolean }, invite: { link: string, expires: number } | null,
  *   showCode: boolean, busy: boolean, month: Date, week: string, selectedDay: string, statsPeriod: string,
  *   entryCar: string | null, entryType: string, reminderSheet: string | null, dayDialog: string | null,
- *   copyWeek: string | null, entrySheet: boolean, setupStep: string | null, error: string | null,
+ *   copyWeek: string | null, entrySheet: boolean, entryEdit: string | null, setupStep: string | null, error: string | null,
  *   sync: 'synced' | 'pending' | 'connecting' | 'offline', returnFocus: string | null
  * }}
  */
@@ -50,6 +50,7 @@ export const state = {
   dayDialog: null,
   copyWeek: null,
   entrySheet: false,
+  entryEdit: null,
   setupStep: null,
   error: null,
   sync: 'connecting',
