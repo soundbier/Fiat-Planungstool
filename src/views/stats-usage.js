@@ -30,7 +30,7 @@ function carUsage(u) {
           <span><span class="usage-label">${esc(monthName(m.key))}</span><small>${m.workdays} ${m.workdays === 1 ? 'Werktag' : 'Werktage'}</small></span>${icon('chevron-down')}
         </button></th>${cells(m)}
       </tr>
-      ${open ? `<tr class="usage-wd" aria-hidden="true"><td><span class="wk"><span class="wk-label"></span><span class="wk-slots">${['M', 'D', 'M', 'D', 'F'].map((d) => `<span>${d}</span>`).join('')}</span></span></td><td colspan="${cols - 1}"></td></tr>
+      ${open ? `<tr class="usage-wd" aria-hidden="true"><td><span class="wk"><span class="wk-label"></span><span class="wk-slots">${['Mo', 'Di', 'Mi', 'Do', 'Fr'].map((d) => `<span>${d}</span>`).join('')}</span></span></td><td colspan="${cols - 1}"></td></tr>
         ${m.weeks.map((w) => `<tr class="usage-week">
           <th scope="row"><span class="wk"><span class="wk-label">KW ${w.kw}</span>${slots(w)}</span></th>${cells(w)}
         </tr>`).join('')}` : ''}`;

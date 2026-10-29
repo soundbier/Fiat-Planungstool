@@ -106,6 +106,7 @@ function renderMonth(today) {
   const isCurrent = year === new Date().getFullYear() && month === new Date().getMonth();
   const cells = [];
   let clash = false;
+  let all = false;
   for (let i = 0; i < startOffset; i++) cells.push('<div class="mday-empty"></div>');
   for (let d = 1; d <= daysInMonth; d++) {
     const iso = `${year}-${pad(month + 1)}-${pad(d)}`;
@@ -114,6 +115,7 @@ function renderMonth(today) {
     // Eine Zeile pro Auto (feste Reihenfolge), Farbe + Initiale = Person
     const slots = cars().map((c) => {
       const b = bookingFor(iso, c.id);
+      if (b?.driver === ALL) all = true;
       return b ? `<span class="slot"${pc(b.driver)}>${esc(initialOf(b.driver))}</span>` : '<span class="slot slot-free"></span>';
     }).join('');
     cells.push(`<button class="mday${iso === today ? ' today' : ''}${iso < today ? ' past' : ''}${dup ? ' clash' : ''}" data-action="open-day" data-day="${iso}" aria-label="${esc(dayLabel(iso))}${dup ? ', Doppelbuchung' : ''}"${iso === today ? ' aria-current="date"' : ''}>
@@ -128,6 +130,9 @@ function renderMonth(today) {
       <div class="month-grid">${cells.join('')}</div>
     </div>
     ${hint()}
+    <p class="legend" aria-label="Personen">
+      ${[...people().map((p) => p.id), ...(all ? [ALL] : [])].map((id) => `<span>${avatar(id, 'sm')}${esc(personName(id))}</span>`).join('')}
+    </p>
     ${cars().length > 1 || clash ? `<p class="legend">
       ${cars().length > 1 ? `<span>Je Tag von oben:</span>${cars().map((c) => `<span>${carBadge(c.id, 'sm')}${esc(c.name)}</span>`).join('')}` : ''}
       ${clash ? '<span><i class="dot"></i>Person für mehrere Autos eingetragen</span>' : ''}

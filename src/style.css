@@ -73,6 +73,7 @@
   --tabbar: 56px;
   --gutter: 16px;
   --content: 600px;
+  --content-wide: 920px;
 }
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
@@ -467,6 +468,7 @@ button.row:active { background: var(--surface); }
 .slot { display: block; height: 16px; border-radius: var(--r-xs); background: var(--pc, var(--id-neutral)); color: #fff; font-size: 11px; line-height: 16px; font-weight: 700; text-align: center; overflow: hidden; }
 .slot-free { background: none; }
 .mday-empty { min-height: 68px; }
+.legend + .legend { margin-top: var(--s-2); }
 .legend { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-3); margin-top: var(--s-3); font-size: var(--fs-xs); line-height: var(--lh-xs); color: var(--text-2); }
 .legend > span { display: inline-flex; align-items: center; gap: 6px; }
 .legend .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--danger); }
@@ -587,8 +589,8 @@ button.row:active { background: var(--surface); }
 .usage-week td { font-size: var(--fs-sm); font-weight: 500; }
 .usage-wd td { padding-bottom: 0; }
 .wk { display: flex; align-items: center; gap: var(--s-2); padding-left: var(--s-3); }
-.wk-label { width: 44px; flex: none; font-size: var(--fs-xs); color: var(--text-2); font-weight: 500; }
-.wk-slots { display: grid; grid-template-columns: repeat(5, 18px); gap: 3px; }
+.wk-label { min-width: 44px; flex: none; white-space: nowrap; font-size: var(--fs-xs); color: var(--text-2); font-weight: 500; }
+.wk-slots { display: grid; grid-template-columns: repeat(5, 20px); gap: 3px; }
 .wk-slots > span:not(.slot) { font-size: 10px; line-height: 12px; text-align: center; color: var(--text-2); }
 .wk-slots .slot-free { background: var(--surface); }
 .wk-slots .slot-out { background: none; box-shadow: inset 0 0 0 1px var(--surface); }
@@ -673,6 +675,32 @@ button.row:active { background: var(--surface); }
 .toast button { flex: none; min-height: var(--hit); padding: 0; border: 0; background: none; color: inherit; font-weight: 700; }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } }
 @keyframes toast-out { to { opacity: 0; } }
+
+/* Schmale Bildschirme: Nutzungstabelle zeigt im Kopf nur die Initiale (Name bleibt vorlesbar) */
+@media (max-width: 419px) {
+  .usage thead .person > span:last-child { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+}
+
+/* ==========================================================================
+   Breite Ansichten: Kalender und Auswertung nutzen mehr Platz,
+   Formulare und Texte bleiben bei --content
+   ========================================================================== */
+@media (min-width: 960px) {
+  .appbar, .notices, .page { max-width: var(--content-wide); }
+  .page:not([data-tab="calendar"], [data-tab="stats"]) > *,
+  .page > .seg, .cal > .seg, .page .footnote, .page .empty, .area > p { max-width: var(--content); }
+  .top { flex-direction: row; align-items: flex-start; gap: var(--s-8); }
+  .top > .today { flex: 1 1 0; }
+  .top > .due-list { flex: 1 1 0; }
+  .mday, .mday-empty { min-height: 84px; }
+  /* Auswertung: Abschnitte je Auto nebeneinander */
+  .area { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-8) var(--s-8); }
+  .area > * { grid-column: 1 / -1; }
+  .area > .section[style] { grid-column: auto; }
+  .area:not(:has(> .section[style] ~ .section[style])) > .section[style] { grid-column: 1 / -1; }
+  .week, .copy-week { max-width: var(--content); }
+  .area > * + *, .area > .area-title + * { margin-top: 0; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 1ms !important; animation-delay: 0ms !important; transition-duration: 1ms !important; }
