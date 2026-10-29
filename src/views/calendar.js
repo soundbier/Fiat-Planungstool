@@ -130,7 +130,7 @@ function renderMonth(today) {
       <div class="month-grid">${cells.join('')}</div>
     </div>
     ${hint()}
-    <p class="legend" aria-label="Personen">
+    <p class="legend">
       ${[...people().map((p) => p.id), ...(all ? [ALL] : [])].map((id) => `<span>${avatar(id, 'sm')}${esc(personName(id))}</span>`).join('')}
     </p>
     ${cars().length > 1 || clash ? `<p class="legend">

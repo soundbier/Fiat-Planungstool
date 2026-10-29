@@ -676,9 +676,15 @@ button.row:active { background: var(--surface); }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } }
 @keyframes toast-out { to { opacity: 0; } }
 
-/* Schmale Bildschirme: Nutzungstabelle zeigt im Kopf nur die Initiale (Name bleibt vorlesbar) */
+/* Schmale Bildschirme: Nutzungstabelle zeigt im Kopf nur die Initiale (Name bleibt vorlesbar),
+   ab drei Personen bis 600 px */
 @media (max-width: 419px) {
   .usage thead .person > span:last-child { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .wk { gap: var(--s-1); padding-left: 0; }
+  .usage :is(th, td):not(:first-child) { padding-left: var(--s-2); }
+}
+@media (max-width: 599px) {
+  .usage:has(thead th:nth-child(5)) thead .person > span:last-child { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 }
 
 /* ==========================================================================
@@ -698,7 +704,7 @@ button.row:active { background: var(--surface); }
   .area > * { grid-column: 1 / -1; }
   .area > .section[style] { grid-column: auto; }
   .area:not(:has(> .section[style] ~ .section[style])) > .section[style] { grid-column: 1 / -1; }
-  .week, .copy-week { max-width: var(--content); }
+  .week, .copy-week, .cal:has(> .week) > .cal-head { max-width: var(--content); }
   .area > * + *, .area > .area-title + * { margin-top: 0; }
 }
 
