@@ -64,16 +64,26 @@ function renderSettlement(from) {
 /** Bereich Kosten: Summe aller Autos, je Auto, Abrechnung */
 export function renderCosts(from) {
   const all = cars().map((c) => ({ c, s: carStats(state.entries, c.id, from) })).filter((x) => x.s.totalCost > 0);
-  if (!all.length) return '';
+  const head = '<h2 class="area-title" id="area-costs">Kosten</h2>';
+  if (!all.length) {
+    return `
+    <section class="area" aria-labelledby="area-costs">
+      ${head}
+      <p class="muted">Keine Kosten im Zeitraum. Die Abrechnung erscheint, sobald Tank-, Lade- oder sonstige Kosten erfasst sind.</p>
+      <button class="btn-quiet" data-action="tab" data-tab="entries">Kosten erfassen</button>
+    </section>`;
+  }
   const total = all.reduce((a, x) => a + x.s.totalCost, 0);
+  const without = cars().filter((c) => !all.some((x) => x.c.id === c.id));
   return `
     <section class="area" aria-labelledby="area-costs">
-      <h2 class="area-title" id="area-costs">Kosten</h2>
+      ${head}
       <div>
         <p class="kpi"><span class="kpi-value">${eur.format(total)}</span></p>
         <p class="kpi-sub">alle Autos im Zeitraum</p>
       </div>
       ${all.map((x) => carCosts(x.c, x.s)).join('')}
+      ${without.length ? `<p class="kpi-sub">Keine Kosten im Zeitraum: ${without.map((c) => esc(c.name)).join(', ')}</p>` : ''}
       ${renderSettlement(from)}
     </section>`;
 }

@@ -50,10 +50,18 @@ function carUsage(u) {
 /** Bereich Nutzung: gebuchte Werktage je Auto und Monat, aufklappbar bis zur Woche */
 export function renderUsage(from) {
   const list = workdayUsage({ setup: state.setup, bookings: state.bookings, from, today: today() }).filter((u) => u.months.length);
-  if (!list.length) return '';
+  const head = '<h2 class="area-title" id="area-usage">Nutzung</h2>';
+  if (!list.length) {
+    return `
+    <section class="area" aria-labelledby="area-usage">
+      ${head}
+      <p class="muted">Keine Buchungen im Zeitraum.</p>
+      <button class="btn-quiet" data-action="tab" data-tab="calendar">Zum Kalender</button>
+    </section>`;
+  }
   return `
     <section class="area" aria-labelledby="area-usage">
-      <h2 class="area-title" id="area-usage">Nutzung</h2>
+      ${head}
       ${list.map(carUsage).join('')}
       <p class="footnote">Gebuchte Werktage Mo–Fr bis heute, ab der ersten Buchung im Zeitraum. „Alle“ zählt für jede Person. Monat antippen für die Wochen; eine Woche über den Monatswechsel zählt in jedem Monat nur mit dessen Tagen.</p>
     </section>`;
