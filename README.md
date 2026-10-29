@@ -10,9 +10,9 @@ Vite + Vanilla JS + Firebase Firestore (offlinefähig via `persistentLocalCache`
 - Beim Start meldet sich die App unsichtbar per **Firebase Anonymous Auth** an (eine `uid` pro Gerät/Browser).
 - Erster Start: **Neuen Haushalt erstellen** (zufälliger 24-stelliger Code via `crypto.getRandomValues`) – danach erscheint
   sofort eine **Einladung** (QR-Code/Link `https://deine-domain/#h=CODE&i=TOKEN`) für die zweite Person.
-- Danach **Wer bist du?** – Lukas oder Marie. Code und Name liegen in `localStorage`.
+- Danach **Wer bist du?** – eine der Personen aus den Stammdaten. Code und Personen-ID liegen in `localStorage`.
 - Daten: `households/{code}/bookings`, `/entries`, `/reminders`, `/recurring`, `/members/{uid}`, `/invites/{token}`, `/meta/config`, `/meta/setup` (Personen & Autos).
-- **Wiederkehrende Kosten:** Beim Erfassen (außer Tanken/Laden) „Wiederholen“ wählen – fällige Einträge werden beim Start automatisch angelegt (`/recurring`), Beenden in der Kostenliste.
+- **Wiederkehrende Kosten:** Beim Erfassen (außer Tanken/Laden) „Wiederholen“ wählen – fällige Einträge werden beim Start, beim Zurückkehren in die App und bei Tageswechsel automatisch angelegt (`/recurring`), Beenden in der Kostenliste.
 - **Verbrauch je Tankfüllung/Ladung:** in der Kostenliste und als Verlauf in der Auswertung (Verbrenner nur zwischen Volltankungen).
 - **Buchungskonflikte:** Überschreiben einer Buchung einer anderen Person (Tagesdialog, Woche kopieren) muss bestätigt werden.
 - **Abrechnung:** Kosten je Auto werden nach gebuchten Kalendertagen (bis heute) auf die Personen verteilt und mit „Bezahlt von“ verrechnet.
@@ -28,7 +28,10 @@ Vite + Vanilla JS + Firebase Firestore (offlinefähig via `persistentLocalCache`
 - **Link im Fragment** (`#…`): wird nicht an den Server gesendet, landet also nicht in Server-Logs oder Referrern.
   Alte Links `/?h=CODE` funktionieren weiterhin (nur bei offenen Haushalten).
 - **Geräte entfernen:** In den Einstellungen sichtbar, jedes Gerät kann andere entfernen.
-- **Code erneuern:** kopiert alle Daten (mit gleichen IDs, Einträge mit ursprünglicher Erfassungszeit) in einen neuen Haushalt, sperrt den alten und löscht dort Daten und Geräte. Benötigt die aktuellen `firestore.rules`.
+- **Code erneuern:** kopiert alle Daten (mit gleichen IDs, Einträge mit ursprünglicher Erfassungszeit) in einen neuen Haushalt,
+  sperrt den alten, entfernt dort Geräte und Einladungen, prüft die Kopie und löscht erst dann die alten Daten.
+  Bricht der Vorgang ab, wird er beim nächsten Start (oder erneutem „Code erneuern“) mit demselben neuen Code fortgesetzt.
+  Benötigt die aktuellen `firestore.rules`.
 - **Security-Header** (CSP, Referrer-Policy, X-Frame-Options, …) in [`public/_headers`](public/_headers) für Cloudflare Pages.
 
 ## Lokale Entwicklung
@@ -83,11 +86,12 @@ npm run check      # Typecheck + Tests + Build
 (Alternativ: `firebase deploy --only firestore:rules` mit der Firebase CLI.)
 
 Die Regeln:
-- erlauben Zugriff nur für angemeldete Nutzer (`request.auth != null`) und nur unterhalb von `households/{code}/bookings` bzw. `/entries`,
-- verbieten jeden Zugriff auf `households` selbst (kein `list` → Codes sind nicht auslesbar),
-- erlauben Daten nur Mitgliedern (`members/{uid}`); Beitritt nur bei offenem Haushalt oder mit gültiger, einmaliger Einladung,
+- verbieten jeden Zugriff auf `households/{code}` selbst (kein `list` → Codes sind nicht auslesbar) und außerhalb von `households`,
+- erlauben Daten nur Mitgliedern (`members/{uid}` des angemeldeten Geräts); Beitritt nur bei offenem Haushalt oder mit gültiger, einmaliger Einladung,
 - prüfen bei Buchungen, dass die Dokument-ID `{date}_{car}` entspricht,
-- validieren alle Felder (Fahrer/Ersteller `lukas`/`marie`, Auto `fiat`/`citroen`, Datumsformat, Zahlenbereiche, `full` nur beim Citroën, Notizlänge, Server-Timestamps).
+- validieren alle Felder: IDs von Personen/Autos (`^[a-z0-9]{1,20}$`), Kostenarten, Datumsformat, Zahlenbereiche, Notizlänge, Server-Timestamps
+  (`createdAt` bei Einträgen darf beim Anlegen auch in der Vergangenheit liegen – für „Code erneuern“),
+- erlauben bei Wiederholungen nur das Weiterschalten von `next`.
 
 Die Abfrage sortiert nach `date`; dafür genügt der automatische Einzelfeld-Index.
 
@@ -116,29 +120,67 @@ Seite in Safari öffnen → Teilen → **Zum Home-Bildschirm**.
 
 ## Datenmodell
 
-`bookings` – Dokument-ID `{YYYY-MM-DD}_{car}` (ein Dokument pro Tag und Auto; "frei" = Dokument gelöscht)
+Alles liegt unter `households/{code}/`. IDs von Personen und Autos kommen aus `meta/setup` (frei konfigurierbar);
+`alle` (Fahrer: alle Personen) und `konto` (Zahler: Gemeinschaftskonto) sind reserviert.
+
+`meta/setup` – Stammdaten (je 1–10)
+
+| Feld | Typ |
+|---|---|
+| people | `[{ id, name }]` |
+| cars | `[{ id, name, short, kind: "electric" \| "fuel" }]` (Elektro in kWh, Verbrenner in Litern) |
+
+`meta/config` – `locked` (bool): Beitritt nur mit Einladung
+
+`members/{uid}` – `device` (Gerätebezeichnung), `joinedAt`, `invite` (beim Beitritt verbrauchter Token, optional)
+
+`invites/{token}` – `createdAt`, `expiresAt` (max. 7 Tage)
+
+`bookings` – Dokument-ID `{YYYY-MM-DD}_{car}` (ein Dokument pro Tag und Auto; „frei“ = Dokument gelöscht)
 
 | Feld | Typ |
 |---|---|
 | date | `"YYYY-MM-DD"` |
-| car | `"fiat"` (Fiat 500e) \| `"citroen"` (Citroën) |
-| driver | `"lukas"` \| `"marie"` |
-| updatedBy | `"lukas"` \| `"marie"` |
+| car | Auto-ID |
+| driver | Personen-ID oder `"alle"` |
+| updatedBy | Personen-ID |
 | updatedAt | Server-Timestamp |
 
-`entries` – Einträge sind nicht bearbeitbar (nur anlegen und löschen)
+`entries` – Kosten und Kilometerstände (anlegen, bearbeiten, löschen)
 
 | Feld | Typ |
 |---|---|
-| car | `"fiat"` \| `"citroen"` |
+| car | Auto-ID |
+| type | `fuel` \| `service` \| `parking` \| `toll` \| `insurance` \| `tax` \| `other` \| `odo` (fehlt bei alten Einträgen = `fuel`) |
 | date | `"YYYY-MM-DD"` |
-| odometer | Ganzzahl ≥ 0 (km) |
-| amount | Zahl > 0 (kWh beim Fiat, Liter beim Citroën) |
-| cost | Zahl ≥ 0 (EUR) |
-| full | bool (Volltank; beim Fiat immer `false`) |
+| odometer | Ganzzahl ≥ 0 (km); Pflicht bei `fuel` und `odo`, sonst optional |
+| amount | Zahl > 0 (kWh bzw. Liter), nur bei `fuel` |
+| cost | Zahl ≥ 0 (EUR), bei `odo` immer 0 |
+| full | bool (Volltank), nur bei `fuel`; bei Elektroautos immer `false` |
 | note | string (≤ 300) |
-| createdBy | `"lukas"` \| `"marie"` |
+| createdBy | Personen-ID |
+| paidBy | Personen-ID oder `"konto"` (fehlt bei alten Einträgen = `createdBy`) |
 | createdAt | Server-Timestamp |
+
+`reminders` – Fristen
+
+| Feld | Typ |
+|---|---|
+| car | Auto-ID |
+| title | string (1–80) |
+| due | `"YYYY-MM-DD"` |
+| intervalMonths | 0 (einmalig) bis 120 |
+| note, createdBy, createdAt | wie bei `entries` |
+
+`recurring` – wiederkehrende Kosten; erzeugte Einträge haben die ID `r{id}{YYYYMMDD}`
+
+| Feld | Typ |
+|---|---|
+| car, cost, note, paidBy, createdBy, createdAt | wie bei `entries` |
+| type | wie bei `entries`, ohne `fuel` und `odo` |
+| start | erster Termin (`"YYYY-MM-DD"`), Folgetermine werden immer ab `start` gerechnet |
+| next | nächster noch nicht erzeugter Termin |
+| intervalMonths | 1–120 |
 
 ## Auswertung
 

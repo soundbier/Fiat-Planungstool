@@ -9,6 +9,8 @@ export const LS_CODE = 'autoplaner.household';
 export const LS_NAME = 'autoplaner.name';
 export const LS_PREFS = 'autoplaner.prefs';
 export const LS_MEMBER = 'autoplaner.member';
+/** Laufende Code-Erneuerung { old, new, locked } – wird beim nächsten Start fortgesetzt */
+export const LS_ROTATE = 'autoplaner.rotate';
 
 export const DEFAULT_PREFS = { theme: 'system', size: 'normal', startTab: 'calendar', calView: 'week' };
 

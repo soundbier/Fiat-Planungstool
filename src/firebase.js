@@ -2,7 +2,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-  collection, doc, addDoc, deleteDoc, deleteField, getDoc, getDocs, setDoc, updateDoc, writeBatch, onSnapshot, query, orderBy,
+  collection, doc, addDoc, deleteDoc, deleteField, getDoc, getDocs, getDocsFromServer, setDoc, updateDoc, writeBatch, onSnapshot, query, orderBy,
   serverTimestamp, Timestamp
 } from 'firebase/firestore';
 import { firebaseConfig, missingConfigKeys } from './firebase-config.js';
@@ -160,35 +160,59 @@ async function commitChunks(ops, size = 400) {
   }
 }
 
-// Kopiert alle Daten in einen neuen Haushalt, sperrt den alten und entfernt dort Daten und Geräte.
-export async function rotateHousehold(oldCode, newCode, uid, device) {
-  const [cfg, setup, reminders, recurring, bookings, entries, invites, members] = await Promise.all([
-    getDoc(configRef(oldCode)),
-    getDoc(setupRef(oldCode)),
-    getDocs(col(oldCode, 'reminders')),
-    getDocs(col(oldCode, 'recurring')),
-    getDocs(col(oldCode, 'bookings')),
-    getDocs(col(oldCode, 'entries')),
-    getDocs(col(oldCode, 'invites')),
-    getDocs(col(oldCode, 'members'))
+/** Sammlungen, die „Code erneuern“ umzieht */
+const DATA = ['bookings', 'entries', 'reminders', 'recurring'];
+
+/** Dokument für den neuen Haushalt (Zeitstempel müssen den Rules entsprechen) */
+function copyData(name, data) {
+  if (name === 'bookings') return { ...data, updatedAt: serverTimestamp() };
+  // Einträge behalten createdAt (Reihenfolge am selben Tag), unbestätigte bekommen die Serverzeit
+  if (name === 'entries') return { ...data, createdAt: data.createdAt || serverTimestamp() };
+  return { ...data, createdAt: serverTimestamp() };
+}
+
+/** Fehlende Dokumente (gleiche ID) in den neuen Haushalt kopieren; liefert die Quelldokumente je Sammlung. */
+async function copyMissing(oldCode, newCode) {
+  const [src, dst] = await Promise.all([
+    Promise.all(DATA.map((n) => getDocsFromServer(col(oldCode, n)))),
+    Promise.all(DATA.map((n) => getDocsFromServer(col(newCode, n))))
   ]);
-  await createHousehold(newCode, uid, device, cfg.exists() ? cfg.data().locked : true);
+  await commitChunks(DATA.flatMap((name, i) => {
+    const have = new Set(dst[i].docs.map((d) => d.id));
+    // Gleiche IDs: Buchungen heißen {date}_{car}, aus Wiederholungen erzeugte Einträge r{id}{datum}
+    return src[i].docs.filter((d) => !have.has(d.id))
+      .map((d) => (b) => b.set(doc(db, 'households', newCode, name, d.id), copyData(name, d.data())));
+  }));
+  return src;
+}
+
+/** Sperre des Haushalts; ohne config ist er offen, beim Umzug wird er dann gesperrt. */
+export async function getLocked(code) {
+  const cfg = await getDoc(configRef(code));
+  return cfg.exists() ? cfg.data().locked : true;
+}
+
+/**
+ * Zieht alle Daten in einen neuen Haushalt um. Jeder Schritt ist wiederholbar, ein abgebrochener Lauf
+ * wird mit denselben Codes fortgesetzt (siehe household.js):
+ * 1. neuen Haushalt anlegen und kopieren, 2. alten sperren, andere Geräte und Einladungen entfernen
+ * (danach schreibt dort niemand mehr), 3. Nachzügler kopieren und prüfen, 4. alten leeren und verlassen.
+ */
+export async function rotateHousehold(oldCode, newCode, uid, device, locked) {
+  if (!(await isMember(newCode, uid))) await createHousehold(newCode, uid, device, locked);
+  const setup = await getDoc(setupRef(oldCode));
   if (setup.exists()) await saveSetup(newCode, setup.data());
-  await commitChunks([
-    ...bookings.docs.map((d) => (b) => b.set(doc(db, 'households', newCode, 'bookings', d.id),
-      { ...d.data(), updatedAt: serverTimestamp() })),
-    // Gleiche IDs; Einträge behalten createdAt (Reihenfolge am selben Tag), unbestätigte bekommen die Serverzeit
-    ...entries.docs.map((d) => (b) => b.set(doc(db, 'households', newCode, 'entries', d.id),
-      { ...d.data(), createdAt: d.data().createdAt || serverTimestamp() })),
-    ...reminders.docs.map((d) => (b) => b.set(doc(db, 'households', newCode, 'reminders', d.id),
-      { ...d.data(), createdAt: serverTimestamp() })),
-    // Erzeugte Einträge heißen r{id}{datum}
-    ...recurring.docs.map((d) => (b) => b.set(doc(db, 'households', newCode, 'recurring', d.id),
-      { ...d.data(), createdAt: serverTimestamp() }))
-  ]);
+  await copyMissing(oldCode, newCode);
   await setDoc(configRef(oldCode), { locked: true });
-  await commitChunks([...bookings.docs, ...entries.docs, ...reminders.docs, ...recurring.docs, ...invites.docs].map((d) => (b) => b.delete(d.ref)));
-  const others = members.docs.filter((d) => d.id !== uid);
-  await commitChunks(others.map((d) => (b) => b.delete(d.ref)));
+  const [invites, members] = await Promise.all([getDocs(col(oldCode, 'invites')), getDocs(col(oldCode, 'members'))]);
+  await commitChunks([...invites.docs, ...members.docs.filter((d) => d.id !== uid)].map((d) => (b) => b.delete(d.ref)));
+  const src = await copyMissing(oldCode, newCode);
+  const copied = await Promise.all(DATA.map((n) => getDocsFromServer(col(newCode, n))));
+  DATA.forEach((name, i) => {
+    const have = new Set(copied[i].docs.map((d) => d.id));
+    const missing = src[i].docs.filter((d) => !have.has(d.id)).length;
+    if (missing) throw new Error(`Umzug unvollständig (${missing} in ${name}). Alter Haushalt bleibt erhalten, bitte erneut versuchen.`);
+  });
+  await commitChunks(src.flatMap((s) => s.docs).map((d) => (b) => b.delete(d.ref)));
   await removeMember(oldCode, uid);
 }

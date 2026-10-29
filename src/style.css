@@ -636,13 +636,12 @@ button.row:active { background: var(--surface); }
 /* ==========================================================================
    Einrichtung (ohne Account) und Startfehler
    ========================================================================== */
-.onboard, .setup {
+.onboard {
   min-height: 100vh; min-height: 100dvh; max-width: 480px; margin: 0 auto;
   display: flex; flex-direction: column; justify-content: space-between; gap: var(--s-8);
   padding: calc(env(safe-area-inset-top) + var(--s-12)) calc(env(safe-area-inset-right) + var(--s-6)) calc(env(safe-area-inset-bottom) + var(--s-6)) calc(env(safe-area-inset-left) + var(--s-6));
 }
-.setup { justify-content: flex-start; gap: var(--s-4); }
-.onboard h1, .setup h1 { font-size: var(--fs-2xl); line-height: var(--lh-2xl); font-weight: 700; letter-spacing: var(--tight); }
+.onboard h1 { font-size: var(--fs-2xl); line-height: var(--lh-2xl); font-weight: 700; letter-spacing: var(--tight); }
 .onboard-top { display: flex; flex-direction: column; gap: var(--s-2); }
 .onboard-logo { width: 56px; height: 56px; border-radius: 14px; margin-bottom: var(--s-6); }
 .lead { font-size: var(--fs-lg); line-height: var(--lh-lg); color: var(--text-2); max-width: 30ch; }

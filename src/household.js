@@ -1,8 +1,8 @@
-import { auth, createHousehold, createInvite, isMember, joinHousehold, removeMember, rotateHousehold, subscribeBookings, subscribeConfig, subscribeEntries, subscribeMembers, subscribeRecurring, subscribeReminders, generateRecurring, subscribeSetup } from './firebase.js';
+import { auth, createHousehold, createInvite, getLocked, isMember, joinHousehold, removeMember, rotateHousehold, subscribeBookings, subscribeConfig, subscribeEntries, subscribeMembers, subscribeRecurring, subscribeReminders, generateRecurring, subscribeSetup } from './firebase.js';
 import { DEFAULT_SETUP, recurringDue, recurringEntry, sanitizeSetup } from './lib/model.js';
-import { generateCode, isoDate } from './lib/util.js';
+import { CODE_RE, generateCode, isoDate } from './lib/util.js';
 import { render, scheduleRender } from './render.js';
-import { LS_CODE, LS_MEMBER, LS_NAME, applyColors, state } from './state.js';
+import { LS_CODE, LS_MEMBER, LS_NAME, LS_ROTATE, applyColors, state } from './state.js';
 import { copyText, errText, toast } from './ui.js';
 
 let unsubs = [];
@@ -101,6 +101,20 @@ export function startSync() {
   unsubs.push(subscribeMembers(state.code, (m) => { state.members = m; scheduleRender(); }, quiet));
 }
 
+let day = isoDate(new Date());
+/**
+ * App wieder sichtbar oder Tageswechsel bei offener App: „heute“ neu zeichnen und fällige Wiederholungen anlegen.
+ * @param {boolean} [visible] nach visibilitychange immer, sonst nur bei neuem Tag
+ */
+export function onResume(visible = false) {
+  const now = isoDate(new Date());
+  if (!visible && now === day) return;
+  day = now;
+  // Nur mit Serverstand: aus dem Cache könnte `next` veraltet sein
+  if (meta.recurring && !meta.recurring.fromCache) runRecurring();
+  scheduleRender();
+}
+
 const runningRecurring = new Set();
 /** Fällige wiederkehrende Kosten als Einträge anlegen. */
 function runRecurring() {
@@ -164,10 +178,30 @@ export async function createNewHousehold() {
 }
 
 export async function rotateCode() {
-  const newCode = generateCode(24);
-  await rotateHousehold(state.code, newCode, auth.currentUser.uid, deviceLabel());
-  localStorage.setItem(LS_MEMBER, `${newCode}:${auth.currentUser.uid}`);
-  setHousehold(newCode);
+  // Abgebrochenen Lauf mit demselben neuen Code fortsetzen, statt einen zweiten Haushalt anzulegen
+  const rot = pendingRotation(state.code) || { old: state.code, new: generateCode(24), locked: await getLocked(state.code) };
+  localStorage.setItem(LS_ROTATE, JSON.stringify(rot));
+  await finishRotation(rot);
+}
+
+/** Abgebrochene Code-Erneuerung für diesen Haushalt, sonst null */
+export function pendingRotation(code) {
+  let rot = null;
+  try { rot = JSON.parse(localStorage.getItem(LS_ROTATE) || 'null'); } catch {}
+  return rot && rot.old === code && CODE_RE.test(rot.new) && typeof rot.locked === 'boolean' ? rot : null;
+}
+
+/** Code-Erneuerung (erneut) ausführen. Ist dieses Gerät nicht mehr im alten Haushalt, war nur noch der Wechsel offen. */
+export async function finishRotation(rot) {
+  const uid = auth.currentUser.uid;
+  if (await isMember(rot.old, uid)) await rotateHousehold(rot.old, rot.new, uid, deviceLabel(), rot.locked);
+  else if (!(await isMember(rot.new, uid))) {
+    localStorage.removeItem(LS_ROTATE);
+    throw new Error('Code-Erneuerung lässt sich nicht fortsetzen.');
+  }
+  localStorage.removeItem(LS_ROTATE);
+  localStorage.setItem(LS_MEMBER, `${rot.new}:${uid}`);
+  setHousehold(rot.new);
 }
 
 export function leaveHousehold() {
