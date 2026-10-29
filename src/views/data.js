@@ -1,6 +1,6 @@
 import { importData, saveSetup } from '../firebase.js';
 import { entriesFromCsv, entriesToCsv, fromBackup, toBackup } from '../lib/csv.js';
-import { entryKey, reminderKey } from '../lib/model.js';
+import { entryKey, newItems, recurringKey, reminderKey } from '../lib/model.js';
 import { run } from '../render.js';
 import { applyColors, state, today } from '../state.js';
 import { download, toast } from '../ui.js';
@@ -25,21 +25,21 @@ export async function importFile(file) {
     data = /\.json$/i.test(file.name) || text.trim().startsWith('{') ? fromBackup(JSON.parse(text), state.setup, state.name)
       : entriesFromCsv(text, state.setup, state.name);
   } catch (e) { return toast('Import fehlgeschlagen: ' + (e.message || e)); }
-  const haveE = new Set(state.entries.map(entryKey));
-  const haveR = new Set(state.reminders.map(reminderKey));
-  const entries = data.entries.filter((e) => { const k = entryKey(e); if (haveE.has(k)) return false; haveE.add(k); return true; });
-  const reminders = data.reminders.filter((r) => { const k = reminderKey(r); if (haveR.has(k)) return false; haveR.add(k); return true; });
+  const entries = newItems(data.entries, state.entries, entryKey);
+  const reminders = newItems(data.reminders, state.reminders, reminderKey);
+  const recurring = newItems(data.recurring, state.recurring, recurringKey);
   const bookings = data.bookings.filter((b) => bookingFor(b.date, b.car)?.driver !== b.driver);
-  const dupes = data.entries.length - entries.length + data.reminders.length - reminders.length;
+  const dupes = data.entries.length - entries.length + data.reminders.length - reminders.length + data.recurring.length - recurring.length;
   const parts = [`${entries.length} Kosteneinträge`, `${bookings.length} Kalender-Einteilungen`, `${reminders.length} Fristen`];
+  if (recurring.length) parts.push(`${recurring.length} ${recurring.length === 1 ? 'Wiederholung' : 'Wiederholungen'}`);
   if (data.setup) parts.push('neue Personen/Autos');
-  if (!entries.length && !bookings.length && !reminders.length && !data.setup) {
+  if (!entries.length && !bookings.length && !reminders.length && !recurring.length && !data.setup) {
     return toast(`Nichts Neues zu importieren${dupes ? ` (${dupes} bereits vorhanden)` : ''}`);
   }
   const extra = [dupes && `${dupes} bereits vorhanden`, data.skipped && `${data.skipped} ungültig`].filter(Boolean).join(', ');
   if (!confirm(`Importieren: ${parts.join(', ')}?${extra ? `\n(Übersprungen: ${extra})` : ''}\nBestehende Kalender-Einteilungen an denselben Tagen werden überschrieben.`)) return;
   run(async () => {
     if (data.setup) { await saveSetup(state.code, data.setup); state.setup = data.setup; applyColors(); }
-    await importData(state.code, { entries, bookings, reminders }, state.name);
+    await importData(state.code, { entries, bookings, reminders, recurring }, state.name);
   }, 'Import abgeschlossen');
 }

@@ -1,5 +1,5 @@
 import { setBookingsBatch } from '../firebase.js';
-import { ALL, bookingConflict, dueReminders } from '../lib/model.js';
+import { ALL, bookingConflict, dueReminders, undoChanges, weekBookings, weekCopyChanges } from '../lib/model.js';
 import { addDays, esc, fmtDateLong, isoDate, mondayOf, pad, shortRange, weekNumber } from '../lib/util.js';
 import { render } from '../render.js';
 import { carName, cars, pc, people, personName, prefs, state } from '../state.js';
@@ -7,8 +7,15 @@ import { avatar, carBadge, icon, initialOf, person, shortDay, toast, weekdayOf }
 import { dueLabel, renderReminderSection } from './reminders.js';
 
 /* ---------- Kalender ---------- */
+// Index wird neu aufgebaut, sobald ein Snapshot state.bookings ersetzt (Dokument-ID = {date}_{car}, also eindeutig)
+let indexed = null;
+let index = new Map();
 export function bookingFor(iso, car) {
-  return state.bookings.find((b) => b.date === iso && b.car === car) || null;
+  if (indexed !== state.bookings) {
+    indexed = state.bookings;
+    index = new Map(state.bookings.map((b) => [`${b.date}_${b.car}`, b]));
+  }
+  return index.get(`${iso}_${car}`) || null;
 }
 
 /** Vorlesbare Beschreibung eines Tages, z. B. „Mittwoch, 14. Oktober 2026: Fiat 500e Lukas, Citroën frei“ */
@@ -250,19 +257,12 @@ export function overrideDayCar() {
 /** Angezeigte Woche in die Folgewoche übernehmen und dorthin wechseln */
 export function copyWeek() {
   const start = state.week;
-  const changes = [];
-  for (let i = 0; i < 7; i++) {
-    const src = addDays(start, i), dst = addDays(start, i + 7);
-    for (const c of cars()) {
-      const driver = bookingFor(src, c.id)?.driver || null;
-      if ((bookingFor(dst, c.id)?.driver || null) !== driver) changes.push({ date: dst, car: c.id, driver });
-    }
-  }
+  const changes = weekCopyChanges(state.bookings, start, cars().map((c) => c.id));
   if (!changes.length) return toast('Folgewoche ist bereits identisch');
   const conflicts = changes.filter((ch) => bookingConflict(bookingFor(ch.date, ch.car), ch.driver, state.name));
   if (conflicts.length && !confirm(`${conflicts.length} Buchung${conflicts.length > 1 ? 'en' : ''} anderer Personen in der Folgewoche würde${conflicts.length > 1 ? 'n' : ''} überschrieben:\n`
     + conflicts.map((ch) => `${shortDay(ch.date)} ${carName(ch.car)}: ${personName(bookingFor(ch.date, ch.car).driver)}`).join('\n') + '\n\nTrotzdem übernehmen?')) return;
-  const undo = changes.map((ch) => ({ ...ch, driver: bookingFor(ch.date, ch.car)?.driver || null }));
+  const undo = undoChanges(state.bookings, changes);
   const me = state.name;
   setBookingsBatch(state.code, changes, me).catch((e) => toast('Fehler: ' + e.message));
   state.week = addDays(start, 7);
@@ -275,14 +275,7 @@ export function copyWeek() {
 
 export function resetWeek() {
   const start = mondayOf(isoDate(new Date()));
-  const undo = [];
-  for (let i = 0; i < 7; i++) {
-    const date = addDays(start, i);
-    for (const c of cars()) {
-      const driver = bookingFor(date, c.id)?.driver;
-      if (driver) undo.push({ date, car: c.id, driver });
-    }
-  }
+  const undo = weekBookings(state.bookings, start, cars().map((c) => c.id));
   if (!undo.length) return toast('Aktuelle Woche ist bereits leer');
   if (!confirm(`Alle Einträge der KW ${weekNumber(start)} (${shortRange(start)}) löschen?`)) return;
   const me = state.name;

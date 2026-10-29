@@ -9,16 +9,28 @@
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc -p jsconfig.json && tsc -p jsconfig.app.json",
-    "check": "npm run typecheck && npm test && npm run build"
+    "check": "npm run lint && npm run typecheck && npm test && npm run build",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-autoplaner \"vitest run --config vitest.rules.config.js\"",
+    "test:e2e": "vite build --mode e2e --outDir dist-e2e && firebase emulators:exec --only auth,firestore --project demo-autoplaner \"playwright test\"",
+    "lint": "eslint ."
   },
   "dependencies": {
-    "firebase": "^11.0.0",
+    "firebase": "^13.1.0",
     "qrcode-generator": "^1.4.4"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@firebase/rules-unit-testing": "^6.0.0",
+    "@playwright/test": "^1.56.1",
+    "eslint": "^10.13.0",
+    "firebase-tools": "^15.34.2",
+    "globals": "^17.13.0",
     "typescript": "^7.0.2",
     "vite": "^6.0.0",
     "vite-plugin-pwa": "^2.0.0",
     "vitest": "^5.0.4"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "^1.14.0"
   }
 }

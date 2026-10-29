@@ -43,7 +43,7 @@ function details(c, t, series) {
     ${rows.some(Boolean) ? kv(rows) : ''}
     ${series.length > 1 ? `<h4>Verbrauch je ${comb ? 'Tankfüllung' : 'Ladung'}</h4>${lineChart(series, c.id, u)}` : ''}
     ${t ? `<h4>Letzte Kilometerstände</h4>${odoList(c)}` : ''}
-    <p class="footnote">Ø Verbrauch: ${comb ? 'getankte' : 'geladene'} Menge ab der zweiten ${comb ? 'Tankfüllung' : 'Ladung'} im Zeitraum ÷ gefahrene km × 100.${comb ? ' Aussagekräftig nur bei Volltankungen.' : ''} km pro Monat: zwischen zwei Kilometerständen gleichmäßig verteilt. Hochrechnung: gefahrene km ÷ Tage × 365.</p>`;
+    <p class="footnote">Ø Verbrauch: ${comb ? 'getankte' : 'geladene'} Menge im Zeitraum ÷ km seit der ${comb ? 'Tankfüllung' : 'Ladung'} davor × 100.${comb ? ' Aussagekräftig nur bei Volltankungen.' : ''} km pro Monat: zwischen zwei Kilometerständen gleichmäßig verteilt. Hochrechnung: gefahrene km ÷ Tage × 365.</p>`;
 }
 
 /** Ein Auto, nur Fahrzeugdaten: Verbrauch, km pro Monat mit Tendenz, Details auf Wunsch */

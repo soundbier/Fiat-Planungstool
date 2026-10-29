@@ -1,7 +1,7 @@
 import './style.css';
 import { initPwa } from './pwa.js';
 import { addItem, deleteItem, ensureAuth, removeMember, revokeInvites, setLocked } from './firebase.js';
-import { createNewHousehold, enterHousehold, leaveHousehold, newInvite, refreshSync, rotateCode, setHousehold, shareHousehold } from './household.js';
+import { createNewHousehold, enterHousehold, finishRotation, leaveHousehold, newInvite, onResume, pendingRotation, refreshSync, rotateCode, setHousehold, shareHousehold } from './household.js';
 import { ID_RE, REMINDER_PRESETS } from './lib/model.js';
 import { CODE_RE, addDays, esc, firstOfMonth, isoDate, mondayOf, parseInvite } from './lib/util.js';
 import { TABS, render, run } from './render.js';
@@ -276,6 +276,10 @@ app.addEventListener('touchend', (ev) => {
 window.addEventListener('online', refreshSync);
 window.addEventListener('offline', refreshSync);
 
+// Zurück in der App oder Tageswechsel bei offener App: „heute“ und fällige Wiederholungen aktualisieren
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && state.code) onResume(true); });
+setInterval(() => { if (state.code && document.visibilityState === 'visible') onResume(); }, 60000);
+
 // Ausstehende Renderings nachholen, wenn ein Eingabefeld verlassen wird
 // (nur nach Eingabefeldern – render() blockiert nur dort; sonst entstünde eine Schleife,
 // weil das Ersetzen des fokussierten Elements selbst ein focusout auslöst)
@@ -323,9 +327,17 @@ async function boot() {
   }
 
   if (storedCode && CODE_RE.test(storedCode)) {
+    const rot = pendingRotation(storedCode);
+    let done = false;
+    if (rot) {
+      try { await finishRotation(rot); done = true; toast('Code-Erneuerung abgeschlossen. Jetzt neue Einladung erstellen.'); }
+      catch (e) { console.error(e); toast('Code-Erneuerung nicht abgeschlossen: ' + errText(e)); }
+    }
     // Bestehende Haushalte (vor Einführung der Mitgliedschaft) treten automatisch bei, solange nicht gesperrt.
-    try { await enterHousehold(storedCode, null); }
-    catch (e) { setHousehold(storedCode); state.error = 'Kein Zugriff: ' + errText(e); }
+    if (!done) {
+      try { await enterHousehold(storedCode, null); }
+      catch (e) { setHousehold(storedCode); state.error = 'Kein Zugriff: ' + errText(e); }
+    }
     if (ID_RE.test(storedName)) state.name = storedName;
     else state.setupStep = 'name';
   } else {

@@ -1,4 +1,4 @@
-import { ALL, DEFAULT_SETUP, ID_RE, SHARED, SPECIAL_NAMES, TYPES } from './lib/model.js';
+import { ALL, DEFAULT_SETUP, ID_RE, SHARED, SPECIAL_NAMES, TYPES, sortEntries } from './lib/model.js';
 import { firstOfMonth, isoDate, mondayOf } from './lib/util.js';
 
 /** Feste Identitätsfarben (Tokens --id-* in style.css), vergeben nach Position in den Stammdaten */
@@ -9,6 +9,8 @@ export const LS_CODE = 'autoplaner.household';
 export const LS_NAME = 'autoplaner.name';
 export const LS_PREFS = 'autoplaner.prefs';
 export const LS_MEMBER = 'autoplaner.member';
+/** Laufende Code-Erneuerung { old, new, locked } – wird beim nächsten Start fortgesetzt */
+export const LS_ROTATE = 'autoplaner.rotate';
 
 export const DEFAULT_PREFS = { theme: 'system', size: 'normal', startTab: 'calendar', calView: 'week' };
 
@@ -118,6 +120,21 @@ export function typeLabel(type, car) {
 export const pc = (id) => (ID_RE.test(id) ? ` style="--pc:var(--p-${id}, var(--id-neutral))"` : '');
 
 export const cc = (id) => (ID_RE.test(id) ? ` style="--cc:var(--car-${id}, var(--id-neutral))"` : '');
+
+/**
+ * Ergebnis von `fn`, neu berechnet nur, wenn ein Snapshot state.entries bzw. state.setup ersetzt hat.
+ * @template T @param {() => T} fn @returns {() => T}
+ */
+export function memoEntries(fn) {
+  let entries = null, setup = null, value;
+  return () => {
+    if (entries !== state.entries || setup !== state.setup) { entries = state.entries; setup = state.setup; value = fn(); }
+    return value;
+  };
+}
+
+/** Einträge neueste zuerst (nicht verändern) */
+export const sortedEntries = memoEntries(() => sortEntries(state.entries));
 
 /** Heutiges Datum (lokal) als ISO-String */
 export function today() { return isoDate(new Date()); }

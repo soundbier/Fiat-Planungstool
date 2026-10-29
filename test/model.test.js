@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   kmTrend, workdayUsage,
   ALL, SHARED, DEFAULT_SETUP, sanitizeSetup, slugId, validateEntry, validateReminder, sortEntries, lastOdometer, odometerIssues,
-  carStats, monthlyCosts, settlement, dueIn, dueReminders, intervalLabel, entryKey
+  carStats, monthlyCosts, settlement, dueIn, dueReminders, intervalLabel, entryKey, validateRecurring, recurringKey,
+  weekCopyChanges, undoChanges, weekBookings, newItems
 } from '../src/lib/model.js';
 
 const setup = structuredClone(DEFAULT_SETUP);
@@ -120,6 +121,27 @@ describe('Auswertung', () => {
     const empty = carStats([], 'fiat', '0000-00-00');
     expect(empty.consumption).toBeNull();
     expect(empty.months).toEqual([]);
+  });
+  it('carStats: km und Verbrauch ab dem Stand vor dem Zeitraum', () => {
+    const list = [
+      fuel('2025-12-01', 1000, 40, 70),
+      fuel('2026-01-10', 1500, 30, 60),
+      { car: 'citroen', type: 'odo', date: '2026-02-01', odometer: 1800, cost: 0, note: '', createdBy: 'lukas' },
+      fuel('2026-03-01', 2000, 35, 63)
+    ];
+    const s = carStats(list, 'citroen', '2026-01-01');
+    expect(s.km).toBe(1000);
+    expect(s.fuelKm).toBe(1000);
+    expect(s.consumption).toBeCloseTo(6.5); // (30 + 35) / 1000 km
+    expect(s.costPer100).toBeCloseTo(12.3);
+    expect(s.totalCost).toBe(123);
+    expect(s.totalPer100).toBeCloseTo(12.3);
+    expect(s.avgPrice).toBeCloseTo(123 / 65);
+    // Ohne Eintrag davor: erster Stand im Zeitraum ist der Start
+    const only = carStats(list, 'citroen', '2026-01-05');
+    expect(only.km).toBe(1000);
+    const one = carStats([fuel('2026-03-01', 2000, 35, 63)], 'citroen', '2026-01-01');
+    expect([one.km, one.fuelKm, one.consumption]).toEqual([0, 0, null]);
   });
   it('monthlyCosts füllt leere Monate', () => {
     const m = monthlyCosts([fuel('2025-11-03', 1, 1, 10), fuel('2026-01-20', 2, 1, 5)]);
@@ -284,5 +306,54 @@ describe('Kilometer und Werktage', () => {
     expect([mar.monday, mar.kw, apr.monday]).toEqual(['2026-03-30', 14, '2026-03-30']);
     expect(mar.slots.map((s) => [s.driver, s.counted])).toEqual([['lukas', true], [null, true], [null, false], ['marie', false], [null, false]]);
     expect(apr.slots.map((s) => s.counted)).toEqual([false, false, true, true, true]);
+  });
+});
+
+describe('validateRecurring', () => {
+  const rec = { car: 'fiat', type: 'insurance', cost: '120,5', note: ' HUK ', paidBy: 'marie', start: '2026-01-15', next: '2027-01-15', intervalMonths: 12, createdBy: 'lukas', createdAt: 1, id: 'x' };
+  it('gültig, nur erlaubte Felder', () => {
+    expect(validateRecurring(rec, setup, 'lukas').data).toEqual({
+      car: 'fiat', type: 'insurance', cost: 120.5, note: 'HUK', paidBy: 'marie', start: '2026-01-15', next: '2027-01-15', intervalMonths: 12, createdBy: 'lukas'
+    });
+    expect(recurringKey(validateRecurring(rec, setup, 'lukas').data)).toBe('fiat|insurance|120.5|2026-01-15|12');
+  });
+  it.each([
+    [{ car: 'nope' }, 'Bitte Auto wählen'],
+    [{ type: 'fuel' }, 'Ungültige Art'],
+    [{ cost: -1 }, 'Ungültige Kosten'],
+    [{ next: '' }, 'Ungültiges Datum'],
+    [{ intervalMonths: 0 }, 'Ungültige Wiederholung']
+  ])('Fehler %#', (patch, msg) => {
+    expect(validateRecurring({ ...rec, ...patch }, setup, 'lukas').error).toBe(msg);
+  });
+});
+
+describe('Kalender: Woche übernehmen/leeren, Import-Duplikate', () => {
+  const b = (date, car, driver) => ({ date, car, driver });
+  const cars = ['fiat', 'citroen'];
+  const bookings = [
+    b('2026-01-05', 'fiat', 'lukas'), b('2026-01-06', 'citroen', 'marie'), b('2026-01-07', 'fiat', ALL),
+    // Folgewoche: Mo schon gleich, Di Fiat belegt (wird frei), Mi Fiat anders
+    b('2026-01-12', 'fiat', 'lukas'), b('2026-01-13', 'fiat', 'marie'), b('2026-01-14', 'fiat', 'marie')
+  ];
+  it('weekCopyChanges: nur Abweichungen, frei wird übernommen', () => {
+    expect(weekCopyChanges(bookings, '2026-01-05', cars)).toEqual([
+      b('2026-01-13', 'fiat', null), b('2026-01-13', 'citroen', 'marie'), b('2026-01-14', 'fiat', ALL)
+    ]);
+    expect(weekCopyChanges([], '2026-01-05', cars)).toEqual([]);
+  });
+  it('undoChanges: bisherige Belegung', () => {
+    expect(undoChanges(bookings, weekCopyChanges(bookings, '2026-01-05', cars))).toEqual([
+      b('2026-01-13', 'fiat', 'marie'), b('2026-01-13', 'citroen', null), b('2026-01-14', 'fiat', 'marie')
+    ]);
+  });
+  it('weekBookings: alle Buchungen Mo–So', () => {
+    expect(weekBookings(bookings, '2026-01-12', cars)).toEqual(bookings.slice(3));
+    expect(weekBookings(bookings, '2026-01-19', cars)).toEqual([]);
+  });
+  it('newItems: vorhandene und doppelte überspringen', () => {
+    const e = (date, cost) => ({ car: 'fiat', type: 'parking', date, cost, note: '', createdBy: 'lukas' });
+    expect(newItems([e('2026-01-01', 4), e('2026-01-02', 4), e('2026-01-02', 4), e('2026-01-03', 5)], [e('2026-01-01', 4)], entryKey))
+      .toEqual([e('2026-01-02', 4), e('2026-01-03', 5)]);
   });
 });
