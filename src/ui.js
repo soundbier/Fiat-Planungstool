@@ -130,6 +130,11 @@ export function dateNum(iso) {
   return iso.split('-').reverse().join('.');
 }
 
+/** Liste „Bezeichnung … Wert“; leere Zeilen (false/null) werden übersprungen */
+export function kv(rows) {
+  return `<dl class="kv">${rows.filter(Boolean).map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>`;
+}
+
 /* ---------- Barrierefreiheit ---------- */
 
 const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';

@@ -142,9 +142,19 @@ Seite in Safari öffnen → Teilen → **Zum Home-Bildschirm**.
 
 ## Auswertung
 
-Pro Auto, gefiltert nach Zeitraum (30 Tage / laufendes Jahr / alles):
-- Gefahrene km = letzter − erster Kilometerstand
+Gefiltert nach Zeitraum (30 Tage / laufendes Jahr / alles), von oben nach unten:
+
+**Fahrzeuge** (je Auto, ohne Kosten)
+- Gefahrene km = letzter − erster Kilometerstand, Ø km pro Monat mit Tendenz der letzten 90 Tage
+- km pro Monat als Balken mit Ø-Linie; zwischen zwei Kilometerständen gleichmäßig auf die Tage verteilt
 - Ø Verbrauch = Summe Menge ohne ersten Eintrag ÷ km × 100 (beim Citroën nur bei Volltank-Einträgen sinnvoll)
-- Ø Kosten/100 km = Summe Kosten ohne ersten Eintrag ÷ km × 100
-- Ø Preis = Gesamtkosten ÷ Gesamtmenge
-- Kosten pro Monat als SVG-Balkendiagramm
+- Kilometerstand schnell erfassen: unter „Erfassen“ oben eine Zeile je Auto (Datum heute)
+
+**Nutzung** (je Auto)
+- Gebuchte Werktage Mo–Fr je Person und Monat bis heute, „Alle“ zählt für jede Person; Monat aufklappbar bis zur Kalenderwoche
+- Eine Woche über den Monatswechsel erscheint in beiden Monaten mit den jeweiligen Tagen; Ø pro Woche über den Zeitraum
+
+**Kosten** (ganz unten)
+- Summe aller Autos, je Auto mit Ø Kosten/100 km = Summe Kosten ohne ersten Eintrag ÷ km × 100
+- Ø Preis = Gesamtkosten ÷ Gesamtmenge, Kostenarten, Kosten pro Monat als SVG-Balkendiagramm
+- Abrechnung (wer schuldet wem)

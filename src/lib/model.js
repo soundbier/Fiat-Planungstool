@@ -1,6 +1,6 @@
 // @ts-check
 // Fachlogik: Stammdaten, Validierung, Auswertung, Abrechnung. Ohne DOM/Firebase, daher testbar.
-import { DATE_RE, parseNum, round2, daysBetween, addDays, addMonths } from './util.js';
+import { DATE_RE, parseNum, round2, daysBetween, addDays, addMonths, mondayOf, weekNumber } from './util.js';
 
 /** @typedef {import('./util.js').IsoDate} IsoDate */
 /** @typedef {{ id: string, name: string }} Person */
@@ -319,7 +319,8 @@ export function settlement({ setup, entries, bookings, from, today }) {
 }
 
 /**
- * Gefahrene km je Monat (Differenz zum letzten Stand davor) und Tendenz aus allen Kilometerständen.
+ * Gefahrene km je Monat und Tendenz aus allen Kilometerständen.
+ * Zwischen zwei Ständen wird gleichmäßig verteilt, damit die km im richtigen Monat landen.
  * @param {Entry[]} entries
  * @param {string} car
  * @param {IsoDate} from
@@ -341,10 +342,20 @@ export function kmTrend(entries, car, from, today) {
   const base = [...all].reverse().find((r) => r.date <= cut);
   const recentDays = base ? daysBetween(base.date, last.date) : 0;
   const recent = recentDays > 0 ? (last.odo - /** @type {{ odo: number }} */ (base).odo) / recentDays : null;
-  const months = monthlyCosts(inRange.map((r) => /** @type {Entry} */ ({ date: r.date, cost: 0 }))).map((m) => {
-    const before = all.filter((r) => r.date < m.key + '-01').pop();
-    const end = all.filter((r) => r.date.startsWith(m.key)).pop();
-    return { ...m, value: before && end ? Math.max(0, end.odo - before.odo) : 0 };
+  // Kilometerstand an einem Tag, linear zwischen den Ständen davor und danach
+  const odoAt = (/** @type {IsoDate} */ d) => {
+    const i = all.findIndex((r) => r.date >= d);
+    if (i < 0) return all[all.length - 1].odo;
+    if (i === 0 || all[i].date === d) return all[i].odo;
+    const a = all[i - 1], b = all[i];
+    return a.odo + (b.odo - a.odo) * daysBetween(a.date, d) / daysBetween(a.date, b.date);
+  };
+  const start = prev ? from : first.date;
+  const months = monthlyCosts([/** @type {Entry} */ ({ date: start, cost: 0 }), /** @type {Entry} */ ({ date: last.date, cost: 0 })]).map((m) => {
+    const next = addMonths(m.key + '-01', 1);
+    const a = m.key + '-01' < start ? start : m.key + '-01';
+    const b = next > last.date ? last.date : next;
+    return { ...m, value: Math.max(0, Math.round(odoAt(b) - odoAt(a))) };
   });
   return {
     odometer: last.odo, date: last.date,
@@ -357,28 +368,65 @@ export function kmTrend(entries, car, from, today) {
   };
 }
 
+/** @template T @param {T[]} list @param {(x: T) => string} key @returns {Map<string, T[]>} */
+function groupBy(list, key) {
+  const map = new Map();
+  for (const x of list) {
+    const k = key(x);
+    if (!map.has(k)) map.set(k, []);
+    map.get(k).push(x);
+  }
+  return map;
+}
+
+/** @param {IsoDate} d */
+const isWorkday = (d) => { const w = new Date(d + 'T12:00:00').getDay(); return w > 0 && w < 6; };
+
 /**
- * Ø gebuchte Werktage (Mo–Fr) pro Woche je Person und Auto, ab der ersten Buchung im Zeitraum bis `today`.
+ * Gebuchte Werktage (Mo–Fr) je Auto, Monat und Kalenderwoche – ab der ersten Buchung im Zeitraum bis `today`.
+ * Eine Woche über den Monatswechsel erscheint in beiden Monaten, jeweils nur mit den Tagen dieses Monats.
+ * „Alle“ zählt für jede Person, `free` sind Werktage ohne Buchung. Monate älteste zuerst.
  * @param {{ setup: Setup, bookings: Booking[], from: IsoDate, today: IsoDate }} p
  */
-export function weekdayUsage({ setup, bookings, from, today }) {
+export function workdayUsage({ setup, bookings, from, today }) {
   const ids = setup.people.map((p) => p.id);
-  const isWorkday = (/** @type {IsoDate} */ d) => { const w = new Date(d + 'T12:00:00').getDay(); return w > 0 && w < 6; };
   return setup.cars.map((c) => {
-    const list = bookings.filter((b) => b.car === c.id && b.date >= from && b.date <= today && isWorkday(b.date));
-    if (!list.length) return { car: c, weeks: 0, perWeek: /** @type {Record<string, number>} */ ({}) };
-    const start = list.reduce((m, b) => (b.date < m ? b.date : m), today);
-    let workdays = 0;
-    for (let d = start; d <= today; d = addDays(d, 1)) if (isWorkday(d)) workdays++;
-    const weeks = Math.max(1, workdays / 5);
-    /** @type {Record<string, number>} */
-    const perWeek = Object.fromEntries(ids.map((i) => [i, 0]));
-    for (const b of list) {
-      if (b.driver === ALL) for (const i of ids) perWeek[i]++;
-      else if (b.driver in perWeek) perWeek[b.driver]++;
-    }
-    for (const i of ids) perWeek[i] /= weeks;
-    return { car: c, weeks, perWeek };
+    /** @type {Map<IsoDate, string>} */
+    const byDate = new Map(bookings.filter((b) => b.car === c.id && b.date >= from && b.date <= today && isWorkday(b.date))
+      .map((b) => [b.date, b.driver]));
+    const count = (/** @type {IsoDate[]} */ list) => {
+      /** @type {Record<string, number>} */
+      const days = Object.fromEntries(ids.map((i) => [i, 0]));
+      let free = 0;
+      for (const d of list) {
+        const driver = byDate.get(d);
+        if (!driver) free++;
+        else if (driver === ALL) for (const i of ids) days[i]++;
+        else if (driver in days) days[driver]++;
+      }
+      return { workdays: list.length, days, free };
+    };
+    if (!byDate.size) return { car: c, ...count([]), perWeek: count([]).days, months: /** @type {any[]} */ ([]) };
+    const start = [...byDate.keys()].reduce((m, d) => (d < m ? d : m));
+    /** @type {IsoDate[]} */
+    const workdays = [];
+    for (let d = start; d <= today; d = addDays(d, 1)) if (isWorkday(d)) workdays.push(d);
+    const total = count(workdays);
+    const weeks = Math.max(1, workdays.length / 5);
+    const months = [...groupBy(workdays, (d) => d.slice(0, 7))].map(([key, list]) => {
+      const byWeek = groupBy(list, mondayOf);
+      return {
+        key, ...count(list),
+        weeks: [...byWeek].map(([monday, days]) => ({
+          monday, kw: weekNumber(monday), ...count(days),
+          slots: [0, 1, 2, 3, 4].map((n) => {
+            const date = addDays(monday, n);
+            return { date, driver: byDate.get(date) || null, counted: days.includes(date) };
+          })
+        }))
+      };
+    });
+    return { car: c, ...total, perWeek: Object.fromEntries(ids.map((i) => [i, total.days[i] / weeks])), months };
   });
 }
 

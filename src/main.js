@@ -9,8 +9,7 @@ import { LS_CODE, LS_NAME, applyPrefs, prefs, setPref, state } from './state.js'
 import { app, blurActive, copyText, errText, focusBySelector, focusSelector, focusables, icon, toast } from './ui.js';
 import { copyWeek, overrideDayCar, resetWeek, saveDayCar, updateDayWarning } from './views/calendar.js';
 import { exportCsv, exportJson, importFile } from './views/data.js';
-import { onEntryCarChange, submitEntry, syncNotePrefill, updateEntryForm, updateEntryPreview } from './views/entries.js';
-import { submitKm } from './views/stats.js';
+import { onEntryCarChange, submitEntry, submitKm, syncNotePrefill, updateEntryForm, updateEntryPreview } from './views/entries.js';
 import { deleteReminder, reminderDone, submitReminder } from './views/reminders.js';
 import { removeFromSetup, submitSetup } from './views/settings.js';
 

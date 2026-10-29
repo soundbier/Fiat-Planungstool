@@ -507,8 +507,18 @@ button.row:active { background: var(--surface); }
 /* ==========================================================================
    Auswertung
    ========================================================================== */
+/* Bereiche Fahrzeuge / Nutzung / Kosten: große Überschrift, viel Abstand dazwischen */
+.page > .area + .area { margin-top: var(--s-12); }
+.area > * + * { margin-top: var(--s-8); }
+.area > .area-title + * { margin-top: var(--s-4); }
+.area-title { font-size: var(--fs-xl); line-height: var(--lh-xl); font-weight: 700; letter-spacing: var(--tight); }
 .car-stat-head { display: flex; align-items: center; gap: var(--s-2); margin-bottom: var(--s-2); }
-.car-stat-head h2 { font-size: var(--fs-lg); line-height: var(--lh-lg); font-weight: 600; }
+.car-stat-head h3 { font-size: var(--fs-lg); line-height: var(--lh-lg); font-weight: 600; }
+.car-stat-end { margin-left: auto; font-size: var(--fs-lg); line-height: var(--lh-lg); font-weight: 700; }
+.section h4 { margin: var(--s-6) 0 var(--s-2); font-size: var(--fs-sm); line-height: var(--lh-sm); font-weight: 600; color: var(--text-2); }
+.kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-4); margin-bottom: var(--s-1); }
+.kpis .kpi-value { font-size: var(--fs-2xl); line-height: var(--lh-2xl); }
+.kpis .kpi-unit { display: inline-flex; align-items: center; gap: var(--s-1); font-size: var(--fs-sm); }
 .kpi { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 var(--s-2); }
 .kpi-value { font-size: var(--fs-3xl); line-height: var(--lh-3xl); font-weight: 700; letter-spacing: var(--tight); }
 .kpi-empty { color: var(--text-3); }
@@ -524,8 +534,7 @@ button.row:active { background: var(--surface); }
 .disclosure .icon { width: 16px; height: 16px; transition: transform var(--dur-2) var(--ease); }
 .disclosure[aria-expanded="true"] .icon { transform: rotate(180deg); }
 .details { display: flex; flex-direction: column; padding-bottom: var(--s-2); }
-.details h3 { margin: var(--s-6) 0 var(--s-2); font-size: var(--fs-sm); line-height: var(--lh-sm); font-weight: 600; color: var(--text-2); }
-.details h3:first-child { margin-top: var(--s-2); }
+.details > h4:first-child { margin-top: var(--s-2); }
 .kv { display: flex; flex-direction: column; }
 .kv > div { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-4); min-height: 36px; padding: 6px 0; }
 .kv dt { color: var(--text-2); }
@@ -533,8 +542,6 @@ button.row:active { background: var(--surface); }
 .kv small, .row-sub small { font-size: var(--fs-xs); font-weight: 400; color: var(--text-2); }
 .trend { display: inline-flex; color: var(--text-2); }
 .trend .icon { width: 16px; height: 16px; }
-.inline-field { display: flex; align-items: flex-end; gap: var(--s-2); }
-.inline-field .btn { flex: none; }
 
 .stack { display: flex; gap: 2px; height: 8px; margin: var(--s-3) 0 var(--s-2); border-radius: var(--r-full); overflow: hidden; }
 .stack > span { background: var(--seg); }
@@ -546,10 +553,13 @@ button.row:active { background: var(--surface); }
 .chart-scroll::-webkit-scrollbar { display: none; }
 .chart { display: block; overflow: visible; }
 .chart text { font-family: var(--font); font-size: 10px; font-weight: 500; text-anchor: middle; fill: var(--text-2); }
-.chart .val { fill: var(--text); }
+.chart .val { fill: var(--text); paint-order: stroke; stroke: var(--bg); stroke-width: 3px; stroke-linejoin: round; }
 .chart .axis { stroke: var(--line); }
 .chart .bar, .chart .pt { fill: var(--cc, var(--text-2)); }
 .chart .line { fill: none; stroke: var(--cc, var(--text-2)); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.chart .avg { stroke: var(--text-2); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.chart-legend { display: flex; align-items: center; gap: var(--s-2); margin-top: var(--s-1); font-size: var(--fs-xs); line-height: var(--lh-xs); color: var(--text-2); }
+.avg-swatch { width: 16px; border-top: 1.5px dashed var(--text-2); }
 
 .transfers { display: flex; flex-direction: column; gap: var(--s-2); }
 .transfer { display: flex; align-items: center; gap: var(--s-2); min-height: var(--hit); font-size: var(--fs-md); }
@@ -561,10 +571,34 @@ button.row:active { background: var(--surface); }
 .settle-head strong { font-weight: 600; }
 
 .table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
-.table th, .table td { padding: var(--s-2) 0; text-align: right; font-weight: 500; }
+.table th, .table td { padding: var(--s-2) 0 var(--s-2) var(--s-3); text-align: right; font-weight: 500; }
 .table thead th { color: var(--text-2); font-weight: 500; }
-.table th:first-child { text-align: left; }
-.table thead th .car { vertical-align: middle; }
+.table :is(th, td):first-child { padding-left: 0; text-align: left; }
+.table thead th .person { justify-content: flex-end; max-width: 96px; margin-left: auto; }
+
+/* Nutzung: Monate aufklappbar bis zur Kalenderwoche, Spalten bleiben ausgerichtet */
+.usage td { width: 18%; font-size: var(--fs-md); font-weight: 600; }
+.usage tfoot :is(th, td) { color: var(--text-2); font-size: var(--fs-sm); font-weight: 500; }
+.usage-month .disclosure { width: 100%; justify-content: space-between; margin: 0; color: var(--text); text-align: left; }
+.usage-month .disclosure > span { display: flex; flex-direction: column; }
+.usage-label { font-size: var(--fs-md); line-height: var(--lh-md); font-weight: 600; }
+.usage-month small { font-size: var(--fs-xs); line-height: var(--lh-xs); font-weight: 400; color: var(--text-2); }
+.usage-week :is(th, td) { padding-top: var(--s-1); padding-bottom: var(--s-1); }
+.usage-week td { font-size: var(--fs-sm); font-weight: 500; }
+.usage-wd td { padding-bottom: 0; }
+.wk { display: flex; align-items: center; gap: var(--s-2); padding-left: var(--s-3); }
+.wk-label { width: 44px; flex: none; font-size: var(--fs-xs); color: var(--text-2); font-weight: 500; }
+.wk-slots { display: grid; grid-template-columns: repeat(5, 18px); gap: 3px; }
+.wk-slots > span:not(.slot) { font-size: 10px; line-height: 12px; text-align: center; color: var(--text-2); }
+.wk-slots .slot-free { background: var(--surface); }
+.wk-slots .slot-out { background: none; box-shadow: inset 0 0 0 1px var(--surface); }
+
+/* Erfassen: Kilometerstand je Auto in einer Zeile */
+.km-quick { display: flex; flex-direction: column; gap: var(--s-2); }
+.km-form { flex-direction: row; align-items: center; gap: var(--s-2); }
+.km-car { display: flex; align-items: center; gap: var(--s-3); flex: 1; min-width: 0; }
+.km-form input { width: 112px; flex: none; text-align: right; }
+.km-form .btn-icon { flex: none; width: var(--hit); padding: 0; }
 
 /* ==========================================================================
    Einstellungen

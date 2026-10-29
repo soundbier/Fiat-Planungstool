@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  kmTrend, weekdayUsage,
+  kmTrend, workdayUsage,
   ALL, SHARED, DEFAULT_SETUP, sanitizeSetup, slugId, validateEntry, validateReminder, sortEntries, lastOdometer, odometerIssues,
   carStats, monthlyCosts, settlement, dueIn, dueReminders, intervalLabel, entryKey
 } from '../src/lib/model.js';
@@ -256,17 +256,33 @@ describe('Kilometer und Werktage', () => {
     expect(t.odometer).toBe(3000);
     expect([t.startOdometer, t.startDate, t.days]).toEqual([1000, '2026-01-01', 200]);
     expect(t.perYear).toBeCloseTo(2000 / 200 * 365);
-    expect(t.months.find((m) => m.key === '2026-02').value).toBe(310);
+    // km zwischen zwei Ständen gleichmäßig auf die Monate verteilt
+    expect(t.months.find((m) => m.key === '2026-01').value).toBe(310);
+    expect(t.months.find((m) => m.key === '2026-02').value).toBe(280);
+    expect(t.months.reduce((s, m) => s + m.value, 0)).toBe(2000);
     expect(t.recentPerMonth).not.toBeNull();
     expect(kmTrend([], 'fiat', '0000-00-00', '2026-08-01')).toBeNull();
   });
-  it('weekdayUsage: nur Mo–Fr', () => {
+  const b = (date, driver) => ({ date, car: 'fiat', driver });
+  it('workdayUsage: nur Mo–Fr, „Alle“ zählt für jede Person', () => {
     // 2026-01-05 = Montag; 2 Wochen bis Fr 2026-01-16
-    const b = (date, driver) => ({ date, car: 'fiat', driver });
-    const r = weekdayUsage({ setup, from: '0000-00-00', today: '2026-01-16',
+    const r = workdayUsage({ setup, from: '0000-00-00', today: '2026-01-16',
       bookings: [b('2026-01-05', 'lukas'), b('2026-01-06', 'lukas'), b('2026-01-10', 'lukas'), b('2026-01-12', 'alle')] });
     const fiat = r.find((x) => x.car.id === 'fiat');
-    expect(fiat.weeks).toBe(2);
+    expect([fiat.workdays, fiat.free]).toEqual([10, 7]);
+    expect(fiat.days).toEqual({ lukas: 3, marie: 1 });
     expect(fiat.perWeek).toEqual({ lukas: 1.5, marie: 0.5 });
+    expect(fiat.months.map((m) => m.weeks.map((w) => [w.kw, w.days.lukas, w.free]))).toEqual([[[2, 2, 3], [3, 1, 4]]]);
+    expect(r.find((x) => x.car.id === 'citroen').months).toEqual([]);
+  });
+  it('workdayUsage: Woche über den Monatswechsel in beiden Monaten', () => {
+    // Mo 30.03. – Fr 03.04.2026
+    const [fiat] = workdayUsage({ setup, from: '0000-00-00', today: '2026-04-03',
+      bookings: [b('2026-03-30', 'lukas'), b('2026-04-02', 'marie'), b('2026-04-06', 'marie')] });
+    expect(fiat.months.map((m) => [m.key, m.workdays, m.days.lukas, m.days.marie, m.free])).toEqual([['2026-03', 2, 1, 0, 1], ['2026-04', 3, 0, 1, 2]]);
+    const [mar, apr] = fiat.months.map((m) => m.weeks[0]);
+    expect([mar.monday, mar.kw, apr.monday]).toEqual(['2026-03-30', 14, '2026-03-30']);
+    expect(mar.slots.map((s) => [s.driver, s.counted])).toEqual([['lukas', true], [null, true], [null, false], ['marie', false], [null, false]]);
+    expect(apr.slots.map((s) => s.counted)).toEqual([false, false, true, true, true]);
   });
 });
