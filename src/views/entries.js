@@ -1,4 +1,4 @@
-import { addItem, replaceItem } from '../firebase.js';
+import { addItem, editItem } from '../firebase.js';
 import { REPEAT_OPTIONS, SHARED, TYPES, consumptionSeries, entryType, intervalLabel, recurringDue, recurringFromEntry, lastOdometer, odometerIssues, payerOf, sortEntries, validateEntry } from '../lib/model.js';
 import { esc, eur, isoDate, monthLabel, num, parseNum } from '../lib/util.js';
 import { render } from '../render.js';
@@ -173,7 +173,7 @@ export function submitEntry(form) {
   const issues = data.odometer != null ? odometerIssues(others, data.car, data.date, data.odometer) : [];
   if (issues.length && !confirm(`${issues.join('\n')}\n\nTrotzdem speichern?`)) return;
   if (edit) {
-    replaceItem(state.code, 'entries', edit.id, { ...data, createdAt: edit.createdAt }).catch((e) => toast('Fehler: ' + e.message));
+    editItem(state.code, 'entries', edit.id, data, ['odometer', 'amount', 'full']).catch((e) => toast('Fehler: ' + e.message));
     state.entrySheet = false;
     state.entryEdit = null;
     render();

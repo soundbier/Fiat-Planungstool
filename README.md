@@ -147,7 +147,7 @@ Gefiltert nach Zeitraum (30 Tage / laufendes Jahr / alles), von oben nach unten:
 **Fahrzeuge** (je Auto, ohne Kosten)
 - Gefahrene km = letzter − erster Kilometerstand, Ø km pro Monat mit Tendenz der letzten 90 Tage
 - km pro Monat als Balken mit Ø-Linie; zwischen zwei Kilometerständen gleichmäßig auf die Tage verteilt
-- Ø Verbrauch = Summe Menge ohne ersten Eintrag ÷ km × 100 (beim Citroën nur bei Volltank-Einträgen sinnvoll)
+- Ø Verbrauch = Summe Menge im Zeitraum ÷ km seit dem Tank-/Ladeeintrag davor × 100 (ohne Eintrag davor zählt der erste im Zeitraum nur als Startpunkt; beim Citroën nur bei Volltank-Einträgen sinnvoll)
 - Kilometerstand schnell erfassen: unter „Erfassen“ oben eine Zeile je Auto (Datum heute)
 
 **Nutzung** (je Auto)
@@ -155,6 +155,6 @@ Gefiltert nach Zeitraum (30 Tage / laufendes Jahr / alles), von oben nach unten:
 - Eine Woche über den Monatswechsel erscheint in beiden Monaten mit den jeweiligen Tagen; Ø pro Woche über den Zeitraum
 
 **Kosten** (ganz unten)
-- Summe aller Autos, je Auto mit Ø Kosten/100 km = Summe Kosten ohne ersten Eintrag ÷ km × 100
+- Summe aller Autos, je Auto mit Ø Kosten/100 km = Summe Kosten ÷ km × 100 (km ab dem letzten Kilometerstand vor dem Zeitraum)
 - Ø Preis = Gesamtkosten ÷ Gesamtmenge, Kostenarten, Kosten pro Monat als SVG-Balkendiagramm
 - Abrechnung (wer schuldet wem)

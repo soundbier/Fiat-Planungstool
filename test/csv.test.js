@@ -44,8 +44,11 @@ describe('Backup', () => {
       setup: big,
       bookings: [{ id: 'x', date: '2026-01-01', car: 'golf', driver: 'tom', updatedAt: 1 }],
       entries: [{ id: 'e', createdAt: 1, car: 'golf', type: 'toll', date: '2026-01-01', cost: 9, note: '', createdBy: 'tom', paidBy: 'tom' }],
-      reminders: [{ id: 'r', createdAt: 1, car: 'golf', title: 'HU', due: '2027-01-01', intervalMonths: 24, note: '', createdBy: 'tom' }]
+      reminders: [{ id: 'r', createdAt: 1, car: 'golf', title: 'HU', due: '2027-01-01', intervalMonths: 24, note: '', createdBy: 'tom' }],
+      recurring: [{ id: 'w', createdAt: 1, car: 'golf', type: 'tax', cost: 90, note: '', paidBy: 'tom', start: '2026-01-01', next: '2027-01-01', intervalMonths: 12, createdBy: 'tom' }]
     });
+    expect(data.version).toBe(3);
+    expect(data.recurring[0].id).toBeUndefined();
     expect(data.bookings[0]).toEqual({ date: '2026-01-01', car: 'golf', driver: 'tom' });
     expect(data.entries[0].id).toBeUndefined();
     const res = fromBackup(JSON.parse(JSON.stringify(data)), setup, 'lukas');
@@ -54,11 +57,13 @@ describe('Backup', () => {
     expect(res.entries).toHaveLength(1);
     expect(res.bookings).toHaveLength(1);
     expect(res.reminders).toHaveLength(1);
+    expect(res.recurring).toEqual([{ car: 'golf', type: 'tax', cost: 90, note: '', paidBy: 'tom', start: '2026-01-01', next: '2027-01-01', intervalMonths: 12, createdBy: 'tom' }]);
     expect(res.skipped).toBe(0);
   });
   it('keine Änderung am Setup → setup null; Ungültiges wird gezählt', () => {
     const res = fromBackup({ app: 'autoplaner', setup, entries: [{ car: 'fiat' }], bookings: [{ date: 'x' }], reminders: [] }, setup, 'lukas');
     expect(res.setup).toBeNull();
+    expect(res.recurring).toEqual([]); // ältere Backups ohne Wiederholungen
     expect(res.skipped).toBe(2);
   });
   it('fremde Datei', () => {

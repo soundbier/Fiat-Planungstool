@@ -230,23 +230,31 @@ export function monthlyCosts(list) {
 }
 
 /**
- * Kennzahlen eines Autos ab `from`. Verbrauch aus Tank-/Ladeeinträgen: Menge ab dem zweiten Eintrag / gefahrene km.
+ * Kennzahlen eines Autos ab `from`. km und Verbrauch zählen ab dem letzten Stand bzw. Tank-/Ladeeintrag vor `from`
+ * (ohne einen solchen ab dem ersten im Zeitraum, dessen Menge dann nicht mitzählt): Menge / gefahrene km.
  * @param {Entry[]} entries
  * @param {string} car
  * @param {IsoDate} from
  */
 export function carStats(entries, car, from) {
-  const all = entries.filter((e) => e.car === car && e.date >= from);
-  const fuel = all.filter((e) => entryType(e) === 'fuel' && Number.isFinite(e.odometer))
-    .sort((a, b) => /** @type {number} */ (a.odometer) - /** @type {number} */ (b.odometer) || a.date.localeCompare(b.date));
+  const own = entries.filter((e) => e.car === car);
+  const all = own.filter((e) => e.date >= from);
+  const byOdo = (/** @type {Entry} */ a, /** @type {Entry} */ b) =>
+    /** @type {number} */ (a.odometer) - /** @type {number} */ (b.odometer) || a.date.localeCompare(b.date);
+  const fuel = all.filter((e) => entryType(e) === 'fuel' && Number.isFinite(e.odometer)).sort(byOdo);
+  const fuelBefore = own.filter((e) => e.date < from && entryType(e) === 'fuel' && Number.isFinite(e.odometer)).sort(byOdo).pop();
   const sum = (/** @type {Entry[]} */ l, /** @type {'cost' | 'amount'} */ k) => l.reduce((s, e) => s + (e[k] || 0), 0);
   const totalCost = sum(all, 'cost');
   const fuelCost = sum(fuel, 'cost');
   const fuelAmount = sum(fuel, 'amount');
+  const odosBefore = /** @type {number[]} */ (own.filter((e) => e.date < from).map((e) => e.odometer).filter(Number.isFinite));
   const odos = /** @type {number[]} */ (all.map((e) => e.odometer).filter(Number.isFinite));
-  const km = odos.length > 1 ? Math.max(...odos) - Math.min(...odos) : 0;
-  const fuelKm = fuel.length > 1 ? /** @type {number} */ (fuel[fuel.length - 1].odometer) - /** @type {number} */ (fuel[0].odometer) : 0;
-  const rest = fuel.slice(1);
+  const startOdo = odosBefore.length ? Math.max(...odosBefore) : Math.min(...odos);
+  const km = odos.length && (odosBefore.length || odos.length > 1) ? Math.max(0, Math.max(...odos) - startOdo) : 0;
+  const base = fuelBefore || fuel[0];
+  const fuelKm = fuel.length && base !== fuel[fuel.length - 1]
+    ? /** @type {number} */ (fuel[fuel.length - 1].odometer) - /** @type {number} */ (base.odometer) : 0;
+  const rest = fuelBefore ? fuel : fuel.slice(1);
   const byType = TYPES.filter((t) => t.id !== 'fuel')
     .map((t) => ({ ...t, value: sum(all.filter((e) => entryType(e) === t.id), 'cost') }))
     .filter((t) => t.value > 0);
@@ -447,6 +455,8 @@ export function intervalLabel(n) {
 export const entryKey = (e) => [e.car, entryType(e), e.date, e.odometer ?? '', e.cost, e.amount ?? ''].join('|');
 /** @param {Reminder} r */
 export const reminderKey = (r) => [r.car, r.title, r.due].join('|');
+/** @param {Recurring} r */
+export const recurringKey = (r) => [r.car, r.type, r.cost, r.start, r.intervalMonths].join('|');
 
 export const REPEAT_OPTIONS = [0, 1, 3, 6, 12];
 
@@ -460,6 +470,27 @@ export function recurringFromEntry(e, intervalMonths) {
   return { data: {
     car: e.car, type: entryType(e), cost: e.cost, note: e.note, paidBy: payerOf(e),
     start: e.date, next: addMonths(e.date, intervalMonths), intervalMonths, createdBy: e.createdBy
+  } };
+}
+
+/**
+ * Wiederholung aus einem Backup prüfen (siehe validRecurring in firestore.rules).
+ * @param {any} r @param {Setup} setup @param {string} me
+ * @returns {Result<Recurring>}
+ */
+export function validateRecurring(r, setup, me) {
+  if (!findCarIn(setup, r?.car)) return { error: 'Bitte Auto wählen' };
+  if (r.type === 'fuel' || r.type === 'odo' || !TYPES.some((t) => t.id === r.type)) return { error: 'Ungültige Art' };
+  const cost = parseNum(r.cost);
+  if (!(cost >= 0 && cost < 100000)) return { error: 'Ungültige Kosten' };
+  if (!DATE_RE.test(String(r.start || '')) || !DATE_RE.test(String(r.next || ''))) return { error: 'Ungültiges Datum' };
+  const intervalMonths = Number(r.intervalMonths);
+  if (!(Number.isInteger(intervalMonths) && intervalMonths >= 1 && intervalMonths <= 120)) return { error: 'Ungültige Wiederholung' };
+  const createdBy = ID_RE.test(r.createdBy || '') ? r.createdBy : me;
+  return { data: {
+    car: r.car, type: r.type, cost: round2(cost), note: String(r.note || '').trim().slice(0, 300),
+    paidBy: ID_RE.test(r.paidBy || '') ? r.paidBy : createdBy,
+    start: r.start, next: r.next, intervalMonths, createdBy
   } };
 }
 

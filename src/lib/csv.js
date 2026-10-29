@@ -2,14 +2,15 @@
 // CSV-Export/-Import und JSON-Backup (reine Funktionen).
 import { pad } from './util.js';
 import {
-  ALL, SPECIAL_NAMES, TYPES, MAX_ITEMS, entryType, payerOf, findCarIn, sanitizeSetup, sortEntries, validateEntry, validateReminder
+  ALL, SPECIAL_NAMES, TYPES, MAX_ITEMS, entryType, payerOf, findCarIn, sanitizeSetup, sortEntries, validateEntry, validateRecurring, validateReminder
 } from './model.js';
 
 /** @typedef {import('./model.js').Setup} Setup */
 /** @typedef {import('./model.js').Entry} Entry */
 /** @typedef {import('./model.js').Booking} Booking */
 /** @typedef {import('./model.js').Reminder} Reminder */
-/** @typedef {{ entries: Entry[], bookings: Booking[], reminders: Reminder[], skipped: number, setup?: Setup | null }} ImportData */
+/** @typedef {import('./model.js').Recurring} Recurring */
+/** @typedef {{ entries: Entry[], bookings: Booking[], reminders: Reminder[], recurring: Recurring[], skipped: number, setup?: Setup | null }} ImportData */
 
 export const CSV_HEAD = ['Datum', 'Auto', 'Art', 'Kilometerstand', 'Menge', 'Einheit', 'Kosten EUR', 'Vollgetankt', 'Bezahlt von', 'Erfasst von', 'Notiz'];
 
@@ -120,7 +121,7 @@ export function entriesFromCsv(text, setup, me) {
     }, setup, me);
     if (res.data) entries.push(res.data); else skipped++;
   }
-  return { entries, bookings: [], reminders: [], skipped };
+  return { entries, bookings: [], reminders: [], recurring: [], skipped };
 }
 
 /**
@@ -142,6 +143,7 @@ export function fromBackup(json, current, me) {
   /** @type {Entry[]} */ const entries = [];
   /** @type {Booking[]} */ const bookings = [];
   /** @type {Reminder[]} */ const reminders = [];
+  /** @type {Recurring[]} */ const recurring = [];
   for (const e of Array.isArray(json.entries) ? json.entries : []) {
     const res = validateEntry(e, setup, me);
     if (res.data) entries.push(res.data); else skipped++;
@@ -155,22 +157,28 @@ export function fromBackup(json, current, me) {
     const res = validateReminder(r, setup, me);
     if (res.data) reminders.push(res.data); else skipped++;
   }
+  // Ältere Backups (Version < 3) enthalten keine Wiederholungen
+  for (const r of Array.isArray(json.recurring) ? json.recurring : []) {
+    const res = validateRecurring(r, setup, me);
+    if (res.data) recurring.push(res.data); else skipped++;
+  }
   const changed = JSON.stringify(setup) !== JSON.stringify(current);
-  return { entries, bookings, reminders, skipped, setup: changed ? setup : null };
+  return { entries, bookings, reminders, recurring, skipped, setup: changed ? setup : null };
 }
 
 /**
- * @param {{ setup: Setup, bookings: Booking[], entries: Entry[], reminders: Reminder[] }} data
+ * @param {{ setup: Setup, bookings: Booking[], entries: Entry[], reminders: Reminder[], recurring?: Recurring[] }} data
  */
-export function toBackup({ setup, bookings, entries, reminders }) {
+export function toBackup({ setup, bookings, entries, reminders, recurring = [] }) {
   const strip = (/** @type {any} */ { id, createdAt, ...rest }) => rest;
   return {
     app: 'autoplaner',
-    version: 2,
+    version: 3,
     exportedAt: new Date().toISOString(),
     setup,
     bookings: bookings.map((b) => ({ date: b.date, car: b.car, driver: b.driver })),
     entries: entries.map(strip),
-    reminders: reminders.map(strip)
+    reminders: reminders.map(strip),
+    recurring: recurring.map(strip)
   };
 }

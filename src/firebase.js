@@ -2,7 +2,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-  collection, doc, addDoc, deleteDoc, getDoc, getDocs, setDoc, updateDoc, writeBatch, onSnapshot, query, orderBy,
+  collection, doc, addDoc, deleteDoc, deleteField, getDoc, getDocs, setDoc, updateDoc, writeBatch, onSnapshot, query, orderBy,
   serverTimestamp, Timestamp
 } from 'firebase/firestore';
 import { firebaseConfig, missingConfigKeys } from './firebase-config.js';
@@ -41,8 +41,10 @@ export const addItem = (code, name, data) =>
   addDoc(col(code, name), { ...data, createdAt: serverTimestamp() });
 export const deleteItem = (code, name, id) =>
   deleteDoc(doc(db, 'households', code, name, id));
-export const replaceItem = (code, name, id, data) =>
-  setDoc(doc(db, 'households', code, name, id), data);
+// Ersetzt die Felder, ohne createdAt anzufassen (ist bei unbestätigten Einträgen lokal noch null).
+// Fehlende `optional`-Felder werden entfernt.
+export const editItem = (code, name, id, data, optional) =>
+  updateDoc(doc(db, 'households', code, name, id), { ...Object.fromEntries(optional.map((k) => [k, deleteField()])), ...data });
 export const updateItem = (code, name, id, data) =>
   updateDoc(doc(db, 'households', code, name, id), data);
 
@@ -139,13 +141,14 @@ export async function revokeInvites(code) {
   return snap.size;
 }
 
-// Import: bookings [{date,car,driver}], entries/reminders ohne id/createdAt
-export function importData(code, { bookings = [], entries = [], reminders = [] }, updatedBy) {
+// Import: bookings [{date,car,driver}], entries/reminders/recurring ohne id/createdAt
+export function importData(code, { bookings = [], entries = [], reminders = [], recurring = [] }, updatedBy) {
   return commitChunks([
     ...bookings.map(({ date, car, driver }) => (b) => b.set(bookingRef(code, date, car),
       { date, car, driver, updatedBy, updatedAt: serverTimestamp() })),
     ...entries.map((d) => (b) => b.set(doc(col(code, 'entries')), { ...d, createdAt: serverTimestamp() })),
-    ...reminders.map((d) => (b) => b.set(doc(col(code, 'reminders')), { ...d, createdAt: serverTimestamp() }))
+    ...reminders.map((d) => (b) => b.set(doc(col(code, 'reminders')), { ...d, createdAt: serverTimestamp() })),
+    ...recurring.map((d) => (b) => b.set(doc(col(code, 'recurring')), { ...d, createdAt: serverTimestamp() }))
   ]);
 }
 
@@ -159,10 +162,11 @@ async function commitChunks(ops, size = 400) {
 
 // Kopiert alle Daten in einen neuen Haushalt, sperrt den alten und entfernt dort Daten und Geräte.
 export async function rotateHousehold(oldCode, newCode, uid, device) {
-  const [cfg, setup, reminders, bookings, entries, invites, members] = await Promise.all([
+  const [cfg, setup, reminders, recurring, bookings, entries, invites, members] = await Promise.all([
     getDoc(configRef(oldCode)),
     getDoc(setupRef(oldCode)),
     getDocs(col(oldCode, 'reminders')),
+    getDocs(col(oldCode, 'recurring')),
     getDocs(col(oldCode, 'bookings')),
     getDocs(col(oldCode, 'entries')),
     getDocs(col(oldCode, 'invites')),
@@ -176,10 +180,13 @@ export async function rotateHousehold(oldCode, newCode, uid, device) {
     ...entries.docs.map((d) => (b) => b.set(doc(col(newCode, 'entries')),
       { ...d.data(), createdAt: serverTimestamp() })),
     ...reminders.docs.map((d) => (b) => b.set(doc(col(newCode, 'reminders')),
+      { ...d.data(), createdAt: serverTimestamp() })),
+    // Gleiche ID: erzeugte Einträge heißen r{id}{datum}
+    ...recurring.docs.map((d) => (b) => b.set(doc(db, 'households', newCode, 'recurring', d.id),
       { ...d.data(), createdAt: serverTimestamp() }))
   ]);
   await setDoc(configRef(oldCode), { locked: true });
-  await commitChunks([...bookings.docs, ...entries.docs, ...reminders.docs, ...invites.docs].map((d) => (b) => b.delete(d.ref)));
+  await commitChunks([...bookings.docs, ...entries.docs, ...reminders.docs, ...recurring.docs, ...invites.docs].map((d) => (b) => b.delete(d.ref)));
   const others = members.docs.filter((d) => d.id !== uid);
   await commitChunks(others.map((d) => (b) => b.delete(d.ref)));
   await removeMember(oldCode, uid);
