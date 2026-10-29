@@ -3,124 +3,134 @@ import { INVITE_HOURS } from '../household.js';
 import { MAX_ITEMS, sanitizeSetup, slugId } from '../lib/model.js';
 import { esc, fmtTime, isoDate, mondayOf, shortRange, weekNumber } from '../lib/util.js';
 import { TABS, render } from '../render.js';
-import { SWATCHES, applyColors, cars, pc, people, prefs, state } from '../state.js';
-import { errText, icon, toast } from '../ui.js';
+import { applyColors, cars, cc, people, prefs, state } from '../state.js';
+import { avatar, errText, icon, toast } from '../ui.js';
 import { inviteBox } from './setup.js';
 
-/* ---------- Settings ---------- */
-const SWATCH_NAMES = ['Blau', 'Rot', 'Petrol', 'Lila', 'Orange', 'Grün', 'Pink', 'Grau'];
+/* ---------- Einstellungen ---------- */
+export function segPref(key, options, cur, label) {
+  return `<div class="seg" role="group" aria-label="${esc(label)}">${options.map(([v, l]) => `
+    <button class="seg-btn" data-action="pref" data-key="${key}" data-value="${v}" aria-pressed="${v === cur}">${l}</button>`).join('')}</div>`;
+}
 
-export function segPref(key, options, cur) {
-  return `<div class="seg">${options.map(([v, l]) => `
-    <button class="seg-opt btn-seg ${v === cur ? 'active' : ''}" data-action="pref" data-key="${key}" data-value="${v}" aria-pressed="${v === cur}">${l}</button>`).join('')}</div>`;
+function setting(label, control) {
+  return `<div class="setting"><span class="setting-label">${label}</span>${control}</div>`;
 }
 
 export function renderSettings() {
   const week = mondayOf(isoDate(new Date()));
+  const busy = state.busy ? ' disabled' : '';
   return `
-    <section class="card">
-      <h3>Du bist</h3>
-      <div class="seg">${people().map((p) => `
-        <button class="seg-opt btn-seg pc ${p.id === state.name ? 'active' : ''}"${pc(p.id)} data-action="set-name" data-name="${p.id}" aria-pressed="${p.id === state.name}">${esc(p.name)}</button>`).join('')}</div>
+    <section class="section" aria-labelledby="me-title">
+      <h2 class="section-title" id="me-title">Ich bin</h2>
+      <div class="seg" role="group" aria-label="Ich bin">${people().map((p) => `
+        <button class="seg-btn" data-action="set-name" data-name="${p.id}" aria-pressed="${p.id === state.name}">${avatar(p.id, 'xs')}${esc(p.name)}</button>`).join('')}</div>
     </section>
-    <section class="card">
-      <h3>Personen & Autos</h3>
+
+    <section class="section" aria-labelledby="look-title">
+      <h2 class="section-title" id="look-title">Darstellung</h2>
+      ${setting('Erscheinungsbild', segPref('theme', [['system', 'System'], ['light', 'Hell'], ['dark', 'Dunkel']], prefs.theme, 'Erscheinungsbild'))}
+      ${setting('Schriftgröße', segPref('size', [['normal', 'Normal'], ['large', 'Groß']], prefs.size, 'Schriftgröße'))}
+      ${setting('Beim Öffnen', segPref('startTab', TABS.map((t) => [t.id, t.label]), prefs.startTab, 'Beim Öffnen'))}
+    </section>
+
+    <section class="section" aria-labelledby="setup-title">
+      <h2 class="section-title" id="setup-title">Personen und Autos</h2>
       <form id="setup-form">
-        <p class="set-label">Personen</p>
-        ${people().map((p) => `<div class="edit-row">
-          <i class="dot pc"${pc(p.id)}></i>
-          <input name="p-${p.id}" value="${esc(p.name)}" maxlength="20" required aria-label="Name">
-          <button class="icon-btn small danger" type="button" data-action="remove-person" data-id="${p.id}" aria-label="${esc(p.name)} entfernen">${icon('close')}</button>
-        </div>`).join('')}
-        ${people().length < MAX_ITEMS ? '<input name="new-person" maxlength="20" placeholder="Person hinzufügen" aria-label="Neue Person">' : ''}
-        <p class="set-label">Autos</p>
-        ${cars().map((c) => `<div class="edit-row">
-          <input class="short" name="cs-${c.id}" value="${esc(c.short)}" maxlength="2" required aria-label="Kürzel">
-          <input name="c-${c.id}" value="${esc(c.name)}" maxlength="30" required aria-label="Name">
-          <select name="ck-${c.id}" aria-label="Antrieb">${kindOptions(c.kind)}</select>
-          <button class="icon-btn small danger" type="button" data-action="remove-car" data-id="${c.id}" aria-label="${esc(c.name)} entfernen">${icon('close')}</button>
-        </div>`).join('')}
-        ${cars().length < MAX_ITEMS ? `<div class="edit-row">
-          <input name="new-car" maxlength="30" placeholder="Auto hinzufügen" aria-label="Neues Auto">
-          <select name="new-car-kind" aria-label="Antrieb">${kindOptions('fuel')}</select>
-        </div>` : ''}
-        <button class="btn block" type="submit">Speichern</button>
+        <div class="setting"><span class="setting-label">Personen</span><div class="edit-list">
+          ${people().map((p) => `<div class="edit-row">
+            ${avatar(p.id)}
+            <input name="p-${p.id}" value="${esc(p.name)}" maxlength="20" required aria-label="Name" autocomplete="off">
+            <button class="icon-btn" type="button" data-action="remove-person" data-id="${p.id}" aria-label="${esc(p.name)} entfernen">${icon('x')}</button>
+          </div>`).join('')}
+          ${people().length < MAX_ITEMS ? '<input name="new-person" maxlength="20" placeholder="Person hinzufügen" aria-label="Neue Person" autocomplete="off">' : ''}
+        </div></div>
+        <div class="setting"><span class="setting-label">Autos</span><div class="edit-list">
+          ${cars().map((c) => `<div class="edit-row"${cc(c.id)}>
+            <input class="short car-short" name="cs-${c.id}" value="${esc(c.short)}" maxlength="2" required aria-label="Kürzel" autocomplete="off">
+            <input name="c-${c.id}" value="${esc(c.name)}" maxlength="30" required aria-label="Name" autocomplete="off">
+            <select name="ck-${c.id}" aria-label="Antrieb">${kindOptions(c.kind)}</select>
+            <button class="icon-btn" type="button" data-action="remove-car" data-id="${c.id}" aria-label="${esc(c.name)} entfernen">${icon('x')}</button>
+          </div>`).join('')}
+          ${cars().length < MAX_ITEMS ? `<div class="edit-row">
+            <input name="new-car" maxlength="30" placeholder="Auto hinzufügen" aria-label="Neues Auto" autocomplete="off">
+            <select name="new-car-kind" aria-label="Antrieb">${kindOptions('fuel')}</select>
+          </div>` : ''}
+        </div></div>
+        <button class="btn btn-block" type="submit">Speichern</button>
       </form>
-      <p class="muted small">Gilt für alle Geräte im Haushalt. Beim Entfernen bleiben bestehende Einträge erhalten.</p>
+      <p class="footnote">Gilt für alle Geräte im Haushalt. Beim Entfernen bleiben bestehende Einträge erhalten.</p>
     </section>
-    <section class="card">
-      <h3>Darstellung</h3>
-      <p class="set-label">Modus</p>
-      ${segPref('theme', [['system', 'System'], ['light', 'Hell'], ['dark', 'Dunkel']], prefs.theme)}
-      <p class="set-label">Farbschema</p>
-      ${segPref('scheme', [['warm', 'Warm'], ['cool', 'Kühl'], ['green', 'Grün'], ['contrast', 'Kontrast']], prefs.scheme)}
-      ${people().map((p, i) => { const k = p.id; const cur = prefs.colors[k] || SWATCHES[i % SWATCHES.length]; return `
-      <p class="set-label">Farbe ${esc(p.name)}</p>
-      <div class="swatches" role="group" aria-label="Farbe ${esc(p.name)}">${SWATCHES.map((c, j) => `
-        <button class="swatch ${cur === c ? 'active' : ''}" style="background:${c}" data-action="pref" data-key="color-${k}" data-value="${c}" aria-label="${SWATCH_NAMES[j]}" aria-pressed="${cur === c}"></button>`).join('')}</div>`; }).join('')}
-      <p class="set-label">Schriftgröße</p>
-      ${segPref('size', [['normal', 'Normal'], ['large', 'Groß']], prefs.size)}
-      <p class="set-label">Start-Ansicht</p>
-      ${segPref('startTab', TABS.slice(0, 4).map((t) => [t.id, t.short]), prefs.startTab)}
-      <button class="btn link block" data-action="reset-prefs">Darstellung zurücksetzen</button>
-    </section>
-    <section class="card">
-      <h3>Kalender</h3>
-      <button class="btn danger block" data-action="reset-week">Aktuelle Woche zurücksetzen</button>
-      <p class="muted small">Löscht alle Einteilungen der KW ${weekNumber(week)} (${shortRange(week)}) für alle Autos.</p>
-    </section>
-    <section class="card">
-      <h3>Daten</h3>
-      <button class="btn block" data-action="export-json">Backup herunterladen (JSON)</button>
-      <button class="btn block" data-action="export-csv">Kosten als CSV exportieren</button>
-      <button class="btn block" data-action="import" ${state.busy ? 'disabled' : ''}>Backup / CSV importieren</button>
+
+    <section class="section" aria-labelledby="data-title">
+      <h2 class="section-title" id="data-title">Daten</h2>
+      <div class="list">
+        <button class="list-btn" data-action="export-json">${icon('download')}Backup herunterladen (JSON)</button>
+        <button class="list-btn" data-action="export-csv">${icon('download')}Kosten als CSV exportieren</button>
+        <button class="list-btn" data-action="import"${busy}>${icon('upload')}Backup oder CSV importieren</button>
+        <button class="list-btn danger" data-action="reset-week">${icon('trash-2')}KW ${weekNumber(week)} leeren</button>
+      </div>
       <input type="file" id="import-file" accept=".json,.csv,application/json,text/csv" hidden>
-      <p class="muted small">${state.entries.length} Kosteneinträge · ${state.bookings.length} Kalender-Einteilungen · ${state.reminders.length} Fristen.
-        Import ergänzt nur – vorhandene Einträge werden nicht doppelt angelegt. CSV im Format des Exports (Spalten Datum, Auto, Art, Kilometerstand, Menge, Kosten EUR …).</p>
+      <p class="footnote">${state.entries.length} Kosteneinträge · ${state.bookings.length} Kalendertage · ${state.reminders.length} Fristen.
+        Import ergänzt nur, doppelte Einträge werden übersprungen. „Leeren“ entfernt alle Einteilungen vom ${shortRange(week)}.</p>
     </section>
-    <section class="card">
-      <h3>Einladen</h3>
+
+    <section class="section" aria-labelledby="invite-title">
+      <h2 class="section-title" id="invite-title">Einladen</h2>
       ${state.invite ? inviteBox() : ''}
-      <button class="btn block" data-action="new-invite" ${state.busy ? 'disabled' : ''}>${state.invite ? 'Neue Einladung erstellen' : 'Einladung erstellen'}</button>
-      <button class="btn link block" data-action="revoke-invites" ${state.busy ? 'disabled' : ''}>Offene Einladungen widerrufen</button>
-      <p class="muted small">Einladungen gelten ${INVITE_HOURS} h und nur für ein Gerät.</p>
+      <div class="list">
+        <button class="list-btn" data-action="new-invite"${busy}>${icon('user-plus')}${state.invite ? 'Neue Einladung erstellen' : 'Einladung erstellen'}</button>
+        <button class="list-btn" data-action="revoke-invites"${busy}>${icon('x')}Offene Einladungen widerrufen</button>
+      </div>
+      <p class="footnote">Einladungen gelten ${INVITE_HOURS} Stunden und nur für ein Gerät.</p>
     </section>
-    <section class="card">
-      <h3>Geräte</h3>
-      <label class="check"><input type="checkbox" data-action="toggle-lock" ${state.config.locked ? 'checked' : ''} ${state.busy ? 'disabled' : ''}>
-        Beitritt nur mit Einladung</label>
-      <p class="muted small">${state.config.locked ? 'Der Code allein reicht nicht, um beizutreten.' : 'Achtung: Jeder mit dem Code kann beitreten.'}</p>
-      <ul class="device-list">${state.members.map((m) => {
+
+    <section class="section" aria-labelledby="devices-title">
+      <h2 class="section-title" id="devices-title">Geräte</h2>
+      <label class="check"><span>Beitritt nur mit Einladung</span>
+        <input class="switch" type="checkbox" role="switch" data-action="toggle-lock"${state.config.locked ? ' checked' : ''}${busy}></label>
+      <p class="footnote">${state.config.locked ? 'Der Code allein reicht nicht, um beizutreten.' : 'Jeder mit dem Code kann beitreten.'}</p>
+      <ul>${state.members.map((m) => {
         const me = m.id === auth.currentUser?.uid;
         const since = m.joinedAt?.toMillis ? fmtTime(m.joinedAt.toMillis()) : '';
-        return `<li><span>${esc(m.device || 'Gerät')}${me ? ' <b>(dieses Gerät)</b>' : ''}<br><span class="muted small">seit ${esc(since)}</span></span>
-          ${me ? '' : `<button class="btn danger btn-sm" data-action="remove-member" data-id="${esc(m.id)}" ${state.busy ? 'disabled' : ''}>Entfernen</button>`}</li>`;
+        return `<li class="device">
+          <div>${icon('smartphone')}<span class="row-main"><span class="row-title">${esc(m.device || 'Gerät')}</span><span class="row-sub">${me ? 'Dieses Gerät' : `seit ${esc(since)}`}</span></span></div>
+          ${me ? '' : `<button class="btn btn-danger" data-action="remove-member" data-id="${esc(m.id)}"${busy}>Entfernen</button>`}
+        </li>`;
       }).join('')}</ul>
     </section>
-    <section class="card">
-      <h3>Haushaltscode</h3>
-      ${state.showCode ? `<div class="code-box">${esc(state.code)}</div>
-      <button class="btn block" data-action="copy" data-text="${esc(state.code)}">Code kopieren</button>`
-      : `<button class="btn block" data-action="show-code">Code anzeigen</button>`}
-      <button class="btn danger block" data-action="rotate-code" ${state.busy ? 'disabled' : ''}>Code erneuern</button>
-      <p class="muted small">Falls der Code in falsche Hände geraten ist: Alle Daten ziehen in einen neuen Haushalt um, alle anderen Geräte verlieren den Zugriff und brauchen eine neue Einladung.</p>
+
+    <section class="section" aria-labelledby="code-title">
+      <h2 class="section-title" id="code-title">Haushaltscode</h2>
+      ${state.showCode ? `<div class="code-box">${esc(state.code)}</div>` : ''}
+      <div class="list">
+        ${state.showCode
+          ? `<button class="list-btn" data-action="copy" data-text="${esc(state.code)}">${icon('copy')}Code kopieren</button>`
+          : `<button class="list-btn" data-action="show-code">${icon('key-round')}Code anzeigen</button>`}
+        <button class="list-btn danger" data-action="rotate-code"${busy}>${icon('refresh-cw')}Code erneuern</button>
+      </div>
+      <p class="footnote">Falls der Code in falsche Hände geraten ist: Alle Daten ziehen in einen neuen Haushalt um, alle anderen Geräte verlieren den Zugriff und brauchen eine neue Einladung.</p>
     </section>
-    <section class="card">
-      <h3>Anderem Haushalt beitreten</h3>
+
+    <section class="section" aria-labelledby="switch-title">
+      <h2 class="section-title" id="switch-title">Anderem Haushalt beitreten</h2>
       <form id="switch-form">
-        <label>Einladungslink oder Code<input name="code" autocomplete="off" autocapitalize="off" spellcheck="false" required></label>
-        <button class="btn block" type="submit">Wechseln</button>
+        <label class="field"><span>Einladungslink oder Code</span><input name="code" autocomplete="off" autocapitalize="off" spellcheck="false" required></label>
+        <button class="btn btn-block" type="submit">Wechseln</button>
       </form>
     </section>
-    <section class="card">
-      <button class="btn danger block" data-action="leave">Haushalt verlassen</button>
-      <p class="muted small">Die Daten bleiben im Haushalt erhalten. Ohne Code ist kein erneuter Zugriff möglich.</p>
+
+    <section class="section">
+      <div class="list">
+        <button class="list-btn danger" data-action="leave">${icon('log-out')}Haushalt verlassen</button>
+      </div>
+      <p class="footnote">Die Daten bleiben im Haushalt erhalten. Ohne Code ist kein erneuter Zugriff möglich.</p>
     </section>`;
 }
 
 export function kindOptions(kind) {
   return [['fuel', 'Verbrenner'], ['electric', 'Elektro']]
-    .map(([v, l]) => `<option value="${v}" ${v === kind ? 'selected' : ''}>${l}</option>`).join('');
+    .map(([v, l]) => `<option value="${v}"${v === kind ? ' selected' : ''}>${l}</option>`).join('');
 }
 
 export function submitSetup(form) {
