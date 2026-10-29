@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  kmTrend, weekdayUsage,
   ALL, SHARED, DEFAULT_SETUP, sanitizeSetup, slugId, validateEntry, validateReminder, sortEntries, lastOdometer, odometerIssues,
   carStats, monthlyCosts, settlement, dueIn, dueReminders, intervalLabel, entryKey
 } from '../src/lib/model.js';
@@ -239,5 +240,31 @@ describe('Buchungskonflikt', () => {
     expect(bookingConflict(null, 'lukas', 'lukas')).toBeNull();
     expect(bookingConflict({ ...b, updatedBy: 'lukas' }, 'lukas', 'lukas')).toBeNull();
     expect(bookingConflict(b, 'lukas', 'marie')).toBeNull();
+  });
+});
+
+describe('Kilometer und Werktage', () => {
+  const odo = (date, odometer) => ({ car: 'fiat', type: 'odo', date, odometer, cost: 0, note: '', createdBy: 'lukas' });
+  it('validateEntry: Kilometerstand ohne Kosten', () => {
+    expect(validateEntry({ car: 'fiat', type: 'odo', date: '2026-01-01', odometer: '1234', cost: '9' }, setup, 'lukas').data)
+      .toMatchObject({ type: 'odo', odometer: 1234, cost: 0 });
+    expect(validateEntry({ car: 'fiat', type: 'odo', date: '2026-01-01' }, setup, 'lukas').error).toMatch(/Kilometerstand/);
+  });
+  it('kmTrend: pro Monat und Tendenz', () => {
+    const t = kmTrend([odo('2026-01-01', 1000), odo('2026-02-01', 1310), odo('2026-07-20', 3000)], 'fiat', '0000-00-00', '2026-08-01');
+    expect(t.odometer).toBe(3000);
+    expect(t.perYear).toBeCloseTo(2000 / 200 * 365);
+    expect(t.months.find((m) => m.key === '2026-02').value).toBe(310);
+    expect(t.recentPerMonth).not.toBeNull();
+    expect(kmTrend([], 'fiat', '0000-00-00', '2026-08-01')).toBeNull();
+  });
+  it('weekdayUsage: nur Mo–Fr', () => {
+    // 2026-01-05 = Montag; 2 Wochen bis Fr 2026-01-16
+    const b = (date, driver) => ({ date, car: 'fiat', driver });
+    const r = weekdayUsage({ setup, from: '0000-00-00', today: '2026-01-16',
+      bookings: [b('2026-01-05', 'lukas'), b('2026-01-06', 'lukas'), b('2026-01-10', 'lukas'), b('2026-01-12', 'alle')] });
+    const fiat = r.find((x) => x.car.id === 'fiat');
+    expect(fiat.weeks).toBe(2);
+    expect(fiat.perWeek).toEqual({ lukas: 1.5, marie: 0.5 });
   });
 });
