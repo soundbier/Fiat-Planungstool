@@ -8,3 +8,8 @@ dist
 
 
 
+firestore-debug.log
+*-debug.log
+test-results
+playwright-report
+dist-e2e

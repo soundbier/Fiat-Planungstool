@@ -39,10 +39,17 @@ Vite + Vanilla JS + Firebase Firestore (offlinefähig via `persistentLocalCache`
 ```bash
 npm install
 npm run dev
-npm test           # Vitest: Datums-, Auswertungs-, Abrechnungs-, CSV-/Backup- und Einladungslogik
+npm test           # Vitest: Datums-, Auswertungs-, Abrechnungs-, CSV-/Backup- und Kalenderlogik
+npm run lint       # ESLint
 npm run typecheck  # TypeScript-Prüfung der JSDoc-Typen (src/lib streng, Rest locker)
-npm run check      # Typecheck + Tests + Build
+npm run check      # Lint + Typecheck + Tests + Build
+npm run test:rules # firestore.rules gegen den Firestore-Emulator (braucht Java 21)
+npm run test:e2e   # Playwright-Smoke-Tests: App gegen Auth- und Firestore-Emulator (.env.e2e)
 ```
+
+Node 24 empfohlen (`@firebase/rules-unit-testing` verlangt ≥ 24.12, Vitest ≥ 22.12).
+Für die E2E-Tests einmalig `npx playwright install chromium`.
+GitHub Actions (`.github/workflows/ci.yml`) führt bei Pushes auf `main` und bei Pull Requests alles davon aus.
 
 ### Aufbau
 
@@ -51,6 +58,8 @@ npm run check      # Typecheck + Tests + Build
 - `src/views/` – Kalender, Kosten, Fristen, Auswertung, Einstellungen, Setup, Import/Export
 - `src/render.js` – Rendering inkl. Fokus-Management, `src/main.js` – Events, Tastatur, Wischgesten, Start
 - `src/pwa.js` – Service Worker (vite-plugin-pwa): App-Shell offline, Hinweis bei neuer Version
+- `test/` – Unit-Tests der Fachlogik, `test-rules/` – Tests der Security Rules, `e2e/` – Smoke-Tests der Oberfläche
+- `src/vendor/re2js-stub.js` – ersetzt `re2js` (nur für Firestore-Pipelines nötig, ~260 kB) per Alias in `vite.config.js`
 
 ## Setup
 
@@ -104,7 +113,7 @@ Die Abfrage sortiert nach `date`; dafür genügt der automatische Einzelfeld-Ind
    - Build-Befehl: `npm run build`
    - Ausgabeverzeichnis: `dist`
    - Umgebungsvariablen (**Einstellungen → Variablen und Secrets**, für *Production* und *Preview*):
-     alle sechs `VITE_FIREBASE_*`-Variablen aus Schritt 1, dazu optional `NODE_VERSION` = `20`.
+     alle sechs `VITE_FIREBASE_*`-Variablen aus Schritt 1, dazu `NODE_VERSION` = `24`.
      Ob als „Text“ oder „Secret“ angelegt, ist egal – beide stehen beim Build zur Verfügung.
      Nach dem Ändern von Variablen neu deployen, da sie zur Build-Zeit eingebaut werden.
 4. **Speichern und bereitstellen.** Jeder Push auf den Produktionsbranch deployt automatisch.

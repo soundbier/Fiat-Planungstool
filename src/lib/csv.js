@@ -34,12 +34,12 @@ export function entriesToCsv(entries, setup) {
       fuel && !electric ? (e.full ? 'ja' : 'nein') : '', person(payerOf(e)), person(e.createdBy), e.note || ''
     ]);
   }
-  return '﻿' + rows.map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';')).join('\r\n');
+  return '\uFEFF' + rows.map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';')).join('\r\n');
 }
 
 /** CSV mit Anführungszeichen, `;` oder `,` als Trenner. @param {string} text @returns {string[][]} */
 export function parseCsv(text) {
-  text = text.replace(/^﻿/, '');
+  text = text.replace(/^\uFEFF/, '');
   const first = text.split(/\r?\n/, 1)[0];
   const sep = (first.match(/;/g) || []).length >= (first.match(/,/g) || []).length ? ';' : ',';
   /** @type {string[][]} */

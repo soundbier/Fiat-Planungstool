@@ -81,13 +81,13 @@ export function slugId(name, taken) {
 }
 
 /**
- * Gespeicherte Stammdaten prüfen (Rules validieren die Listen nur grob). Ungültiges fällt auf DEFAULT_SETUP zurück.
+ * Gespeicherte Stammdaten prüfen (wie validSetup in firestore.rules; ältere Dokumente können abweichen). Ungültiges fällt auf DEFAULT_SETUP zurück.
  * @param {any} s
  * @returns {Setup}
  */
 export function sanitizeSetup(s) {
   const seen = new Set();
-  const ok = (/** @type {any} */ x) => x && ID_RE.test(x.id) && typeof x.name === 'string' && x.name.trim()
+  const ok = (/** @type {any} */ x) => x && ID_RE.test(x.id) && x.id !== SHARED && x.id !== ALL && typeof x.name === 'string' && x.name.trim()
     && !seen.has(x.id) && seen.add(x.id);
   const ps = (Array.isArray(s?.people) ? s.people : []).filter(ok)
     .map((/** @type {any} */ p) => ({ id: p.id, name: p.name.trim().slice(0, 20) }));
@@ -546,4 +546,65 @@ export function bookingConflict(prev, driver, me) {
   if (!prev || prev.driver === driver || prev.driver === me) return null;
   if (prev.updatedBy === me) return null;
   return prev.driver;
+}
+
+/** @typedef {{ date: IsoDate, car: string, driver: string | null }} BookingChange */
+
+/** @param {Booking[]} bookings @returns {(date: IsoDate, car: string) => string | null} */
+function driverLookup(bookings) {
+  const map = new Map(bookings.map((b) => [`${b.date}_${b.car}`, b.driver]));
+  return (date, car) => map.get(`${date}_${car}`) || null;
+}
+
+/**
+ * Woche ab `start` in die Folgewoche übernehmen: nur abweichende Tage, „frei“ wird ebenfalls übernommen.
+ * @param {Booking[]} bookings @param {IsoDate} start Montag @param {string[]} carIds
+ * @returns {BookingChange[]}
+ */
+export function weekCopyChanges(bookings, start, carIds) {
+  const driver = driverLookup(bookings);
+  /** @type {BookingChange[]} */
+  const changes = [];
+  for (let i = 0; i < 7; i++) {
+    const src = addDays(start, i), dst = addDays(start, i + 7);
+    for (const car of carIds) {
+      const d = driver(src, car);
+      if (driver(dst, car) !== d) changes.push({ date: dst, car, driver: d });
+    }
+  }
+  return changes;
+}
+
+/**
+ * Bisherige Belegung zu Änderungen (zum Rückgängigmachen).
+ * @param {Booking[]} bookings @param {BookingChange[]} changes @returns {BookingChange[]}
+ */
+export function undoChanges(bookings, changes) {
+  const driver = driverLookup(bookings);
+  return changes.map((ch) => ({ ...ch, driver: driver(ch.date, ch.car) }));
+}
+
+/**
+ * Alle Buchungen der Woche ab `start` (zum Leeren und Wiederherstellen).
+ * @param {Booking[]} bookings @param {IsoDate} start Montag @param {string[]} carIds
+ * @returns {BookingChange[]}
+ */
+export function weekBookings(bookings, start, carIds) {
+  const driver = driverLookup(bookings);
+  /** @type {BookingChange[]} */
+  const out = [];
+  for (let i = 0; i < 7; i++) {
+    const date = addDays(start, i);
+    for (const car of carIds) { const d = driver(date, car); if (d) out.push({ date, car, driver: d }); }
+  }
+  return out;
+}
+
+/**
+ * Nur neue Einträge: weder vorhanden noch doppelt in `items` (Vergleich über `key`).
+ * @template T @param {T[]} items @param {T[]} existing @param {(x: T) => string} key @returns {T[]}
+ */
+export function newItems(items, existing, key) {
+  const have = new Set(existing.map(key));
+  return items.filter((x) => { const k = key(x); if (have.has(k)) return false; have.add(k); return true; });
 }

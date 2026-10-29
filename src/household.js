@@ -160,7 +160,7 @@ export function setHousehold(code) {
 export async function enterHousehold(code, invite) {
   const uid = auth.currentUser.uid;
   if (localStorage.getItem(LS_MEMBER) !== `${code}:${uid}`) {
-    let member = false;
+    let member;
     try { member = await isMember(code, uid); }
     catch (e) { if (e.code !== 'unavailable') throw e; member = !invite; }
     if (!member) await joinHousehold(code, uid, deviceLabel(), invite);

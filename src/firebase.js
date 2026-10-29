@@ -1,7 +1,7 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { connectAuthEmulator, getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import {
-  initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+  connectFirestoreEmulator, initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
   collection, doc, addDoc, deleteDoc, deleteField, getDoc, getDocs, getDocsFromServer, setDoc, updateDoc, writeBatch, onSnapshot, query, orderBy,
   serverTimestamp, Timestamp
 } from 'firebase/firestore';
@@ -19,6 +19,13 @@ export const db = initializeFirestore(app, {
   // das SDK erkennt das selbst und weicht nur dann auf Long-Polling aus (experimentalAutoDetectLongPolling, Standard).
   localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
 });
+
+// Nur für E2E-Tests (.env.e2e): lokale Emulatoren statt Firebase
+const emulator = import.meta.env.VITE_FIREBASE_EMULATOR;
+if (emulator) {
+  connectAuthEmulator(auth, `http://${emulator}:9099`, { disableWarnings: true });
+  connectFirestoreEmulator(db, emulator, 8080);
+}
 
 export function ensureAuth() {
   return new Promise((resolve, reject) => {

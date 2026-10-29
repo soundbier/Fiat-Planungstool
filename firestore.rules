@@ -42,10 +42,41 @@ service cloud.firestore {
       return x is string && x.matches('^[a-z0-9]{1,20}$');
     }
 
+    // „alle“ (Fahrer) und „konto“ (Zahler) sind reserviert
+    function validItemId(x) {
+      return validId(x) && !(x in ['alle', 'konto']);
+    }
+    function validPerson(p) {
+      return p is map && p.keys().hasOnly(['id', 'name']) && p.keys().hasAll(['id', 'name'])
+        && validItemId(p.id) && p.name is string && p.name.size() >= 1 && p.name.size() <= 20;
+    }
+    function validCar(c) {
+      return c is map && c.keys().hasOnly(['id', 'name', 'short', 'kind']) && c.keys().hasAll(['id', 'name', 'short', 'kind'])
+        && validItemId(c.id) && c.name is string && c.name.size() >= 1 && c.name.size() <= 30
+        && c.short is string && c.short.size() >= 1 && c.short.size() <= 2
+        && c.kind in ['electric', 'fuel'];
+    }
+    // Rules kennen keine Schleifen: jede der höchstens 10 Positionen einzeln prüfen
+    function validPeople(l) {
+      return (l.size() <= 0 || validPerson(l[0])) && (l.size() <= 1 || validPerson(l[1]))
+        && (l.size() <= 2 || validPerson(l[2])) && (l.size() <= 3 || validPerson(l[3]))
+        && (l.size() <= 4 || validPerson(l[4])) && (l.size() <= 5 || validPerson(l[5]))
+        && (l.size() <= 6 || validPerson(l[6])) && (l.size() <= 7 || validPerson(l[7]))
+        && (l.size() <= 8 || validPerson(l[8])) && (l.size() <= 9 || validPerson(l[9]));
+    }
+    function validCars(l) {
+      return (l.size() <= 0 || validCar(l[0])) && (l.size() <= 1 || validCar(l[1]))
+        && (l.size() <= 2 || validCar(l[2])) && (l.size() <= 3 || validCar(l[3]))
+        && (l.size() <= 4 || validCar(l[4])) && (l.size() <= 5 || validCar(l[5]))
+        && (l.size() <= 6 || validCar(l[6])) && (l.size() <= 7 || validCar(l[7]))
+        && (l.size() <= 8 || validCar(l[8])) && (l.size() <= 9 || validCar(l[9]));
+    }
+
     function validSetup(d) {
       return d.keys().hasOnly(['people', 'cars']) && d.keys().hasAll(['people', 'cars'])
         && d.people is list && d.people.size() >= 1 && d.people.size() <= 10
-        && d.cars is list && d.cars.size() >= 1 && d.cars.size() <= 10;
+        && d.cars is list && d.cars.size() >= 1 && d.cars.size() <= 10
+        && validPeople(d.people) && validCars(d.cars);
     }
 
     function validBooking(d, id) {
