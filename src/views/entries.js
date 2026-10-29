@@ -1,8 +1,8 @@
 import { addItem, editItem } from '../firebase.js';
-import { REPEAT_OPTIONS, SHARED, TYPES, consumptionSeries, entryType, intervalLabel, recurringDue, recurringFromEntry, lastOdometer, odometerIssues, payerOf, sortEntries, validateEntry } from '../lib/model.js';
+import { REPEAT_OPTIONS, SHARED, TYPES, consumptionSeries, entryType, intervalLabel, recurringDue, recurringFromEntry, lastOdometer, odometerIssues, payerOf, validateEntry } from '../lib/model.js';
 import { esc, eur, isoDate, monthLabel, num, parseNum } from '../lib/util.js';
 import { render } from '../render.js';
-import { carOf, cars, isCombustion, people, personName, state, typeLabel, unit } from '../state.js';
+import { carOf, cars, isCombustion, memoEntries, people, personName, sortedEntries, state, typeLabel, unit } from '../state.js';
 import { avatar, carBadge, dateNum, icon, shortDay, toast } from '../ui.js';
 
 /* ---------- Vorbelegung ---------- */
@@ -13,14 +13,23 @@ function defaultCar() {
   const today = isoDate(new Date());
   const booked = cars().find((c) => state.bookings.some((b) => b.date === today && b.car === c.id && b.driver === state.name));
   if (booked) return booked.id;
-  const mine = sortEntries(state.entries).find((e) => e.createdBy === state.name && carOf(e.car));
+  const mine = sortedEntries().find((e) => e.createdBy === state.name && carOf(e.car));
   return mine ? mine.car : cars()[0].id;
 }
 
 /** Bisherige Notizen beim Tanken/Laden eines Autos (z. B. Ladeorte), neueste zuerst */
+const notesByCar = memoEntries(() => {
+  /** @type {Map<string, Set<string>>} */
+  const map = new Map();
+  for (const e of sortedEntries()) {
+    if (entryType(e) !== 'fuel' || !e.note) continue;
+    if (!map.has(e.car)) map.set(e.car, new Set());
+    map.get(e.car).add(e.note);
+  }
+  return map;
+});
 function fuelNotes(car) {
-  const notes = sortEntries(state.entries).filter((e) => e.car === car && entryType(e) === 'fuel' && e.note).map((e) => e.note);
-  return [...new Set(notes)].slice(0, 8);
+  return [...(notesByCar().get(car) || [])].slice(0, 8);
 }
 
 const noteOptions = (car) => fuelNotes(car).map((n) => `<option value="${esc(n)}">`).join('');
@@ -229,11 +238,11 @@ export function submitKm(form) {
 /* ---------- Verlauf ---------- */
 
 /** Verbrauch je Tank-/Ladeeintrag (id → l bzw. kWh/100 km) */
-function consumptionById() {
+const consumptionById = memoEntries(() => {
   const map = new Map();
   for (const c of cars()) for (const p of consumptionSeries(state.entries, c.id, isCombustion(c.id))) map.set(p.id, p.value);
   return map;
-}
+});
 
 function entryRow(e, consumption) {
   const type = entryType(e);
@@ -278,7 +287,7 @@ function renderRecurring() {
 }
 
 export function renderEntries() {
-  const list = sortEntries(state.entries);
+  const list = sortedEntries();
   const cons = consumptionById();
   const groups = [];
   for (const e of list) {

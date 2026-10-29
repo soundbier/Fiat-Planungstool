@@ -1,7 +1,7 @@
 import { auth, createHousehold, createInvite, isMember, joinHousehold, removeMember, rotateHousehold, subscribeBookings, subscribeConfig, subscribeEntries, subscribeMembers, subscribeRecurring, subscribeReminders, generateRecurring, subscribeSetup } from './firebase.js';
 import { DEFAULT_SETUP, recurringDue, recurringEntry, sanitizeSetup } from './lib/model.js';
 import { generateCode, isoDate } from './lib/util.js';
-import { render } from './render.js';
+import { render, scheduleRender } from './render.js';
 import { LS_CODE, LS_MEMBER, LS_NAME, applyColors, state } from './state.js';
 import { copyText, errText, toast } from './ui.js';
 
@@ -66,9 +66,9 @@ export function refreshSync() {
     state.sync = 'offline';
   } else if (prev !== 'offline' && !offlineTimer) {
     state.sync = 'connecting';
-    offlineTimer = setTimeout(() => { offlineTimer = null; state.sync = 'offline'; render(); }, 5000);
+    offlineTimer = setTimeout(() => { offlineTimer = null; state.sync = 'offline'; scheduleRender(); }, 5000);
   }
-  if (state.sync !== prev) render();
+  if (state.sync !== prev) scheduleRender();
 }
 
 export function startSync() {
@@ -77,28 +77,28 @@ export function startSync() {
     console.error(e);
     if (e.code === 'permission-denied') localStorage.removeItem(LS_MEMBER);
     state.error = 'Synchronisation fehlgeschlagen: ' + errText(e);
-    render();
+    scheduleRender();
   };
   for (const k of Object.keys(meta)) delete meta[k];
   const onMeta = (key, m) => { meta[key] = m; refreshSync(); };
-  unsubs.push(subscribeBookings(state.code, (d, m) => { state.bookings = d; onMeta('bookings', m); render(); }, onErr));
-  unsubs.push(subscribeEntries(state.code, (d, m) => { state.entries = d; onMeta('entries', m); render(); }, onErr));
+  unsubs.push(subscribeBookings(state.code, (d, m) => { state.bookings = d; onMeta('bookings', m); scheduleRender(); }, onErr));
+  unsubs.push(subscribeEntries(state.code, (d, m) => { state.entries = d; onMeta('entries', m); scheduleRender(); }, onErr));
   const quiet = (e) => console.warn(e);
-  unsubs.push(subscribeReminders(state.code, (d, m) => { state.reminders = d; onMeta('reminders', m); render(); }, quiet));
+  unsubs.push(subscribeReminders(state.code, (d, m) => { state.reminders = d; onMeta('reminders', m); scheduleRender(); }, quiet));
   unsubs.push(subscribeRecurring(state.code, (d, m) => {
     state.recurring = d;
     onMeta('recurring', m);
     if (!m.fromCache) runRecurring();
-    render();
+    scheduleRender();
   }, quiet));
   unsubs.push(subscribeSetup(state.code, (s) => {
     state.setup = sanitizeSetup(s);
     state.setupLoaded = true;
     applyColors();
-    render();
+    scheduleRender();
   }, quiet));
-  unsubs.push(subscribeConfig(state.code, (c) => { state.config = c; render(); }, quiet));
-  unsubs.push(subscribeMembers(state.code, (m) => { state.members = m; render(); }, quiet));
+  unsubs.push(subscribeConfig(state.code, (c) => { state.config = c; scheduleRender(); }, quiet));
+  unsubs.push(subscribeMembers(state.code, (m) => { state.members = m; scheduleRender(); }, quiet));
 }
 
 const runningRecurring = new Set();

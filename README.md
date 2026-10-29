@@ -28,7 +28,7 @@ Vite + Vanilla JS + Firebase Firestore (offlinefähig via `persistentLocalCache`
 - **Link im Fragment** (`#…`): wird nicht an den Server gesendet, landet also nicht in Server-Logs oder Referrern.
   Alte Links `/?h=CODE` funktionieren weiterhin (nur bei offenen Haushalten).
 - **Geräte entfernen:** In den Einstellungen sichtbar, jedes Gerät kann andere entfernen.
-- **Code erneuern:** kopiert alle Daten in einen neuen Haushalt, sperrt den alten und löscht dort Daten und Geräte.
+- **Code erneuern:** kopiert alle Daten (mit gleichen IDs, Einträge mit ursprünglicher Erfassungszeit) in einen neuen Haushalt, sperrt den alten und löscht dort Daten und Geräte. Benötigt die aktuellen `firestore.rules`.
 - **Security-Header** (CSP, Referrer-Policy, X-Frame-Options, …) in [`public/_headers`](public/_headers) für Cloudflare Pages.
 
 ## Lokale Entwicklung

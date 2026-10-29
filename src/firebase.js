@@ -15,9 +15,9 @@ if (missingConfigKeys.length) {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
-  // WebChannel-Streams werden von manchen Adblockern/Proxys/Virenscannern blockiert.
-  experimentalForceLongPolling: true
+  // WebChannel-Streams werden von manchen Adblockern/Proxys/Virenscannern blockiert;
+  // das SDK erkennt das selbst und weicht nur dann auf Long-Polling aus (experimentalAutoDetectLongPolling, Standard).
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
 });
 
 export function ensureAuth() {
@@ -177,11 +177,12 @@ export async function rotateHousehold(oldCode, newCode, uid, device) {
   await commitChunks([
     ...bookings.docs.map((d) => (b) => b.set(doc(db, 'households', newCode, 'bookings', d.id),
       { ...d.data(), updatedAt: serverTimestamp() })),
-    ...entries.docs.map((d) => (b) => b.set(doc(col(newCode, 'entries')),
+    // Gleiche IDs; Einträge behalten createdAt (Reihenfolge am selben Tag), unbestätigte bekommen die Serverzeit
+    ...entries.docs.map((d) => (b) => b.set(doc(db, 'households', newCode, 'entries', d.id),
+      { ...d.data(), createdAt: d.data().createdAt || serverTimestamp() })),
+    ...reminders.docs.map((d) => (b) => b.set(doc(db, 'households', newCode, 'reminders', d.id),
       { ...d.data(), createdAt: serverTimestamp() })),
-    ...reminders.docs.map((d) => (b) => b.set(doc(col(newCode, 'reminders')),
-      { ...d.data(), createdAt: serverTimestamp() })),
-    // Gleiche ID: erzeugte Einträge heißen r{id}{datum}
+    // Erzeugte Einträge heißen r{id}{datum}
     ...recurring.docs.map((d) => (b) => b.set(doc(db, 'households', newCode, 'recurring', d.id),
       { ...d.data(), createdAt: serverTimestamp() }))
   ]);

@@ -2,7 +2,17 @@ import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
-  build: { outDir: 'dist', target: 'es2020', chunkSizeWarningLimit: 800 },
+  build: {
+    outDir: 'dist',
+    target: 'es2020',
+    // Firebase ändert sich selten: eigener Chunk bleibt bei App-Updates im Cache
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => (/node_modules\/(firebase|@firebase|idb)\//.test(id) ? 'firebase' : undefined)
+      }
+    }
+  },
   plugins: [
     VitePWA({
       // Manifest liegt in public/, Registrierung erfolgt in src/pwa.js (mit Update-Hinweis)

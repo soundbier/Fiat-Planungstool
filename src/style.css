@@ -630,6 +630,7 @@ button.row:active { background: var(--surface); }
 }
 .qr { width: 200px; max-width: 100%; padding: var(--s-3); border-radius: var(--r-md); background: #fff; }
 .qr svg { display: block; width: 100%; height: auto; }
+.qr [data-qr] { display: block; aspect-ratio: 1; }
 .invite { display: flex; flex-direction: column; gap: var(--s-4); }
 
 /* ==========================================================================

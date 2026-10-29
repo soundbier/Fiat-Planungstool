@@ -75,7 +75,14 @@ function renderSheet() {
   return '';
 }
 
+let frame = 0;
+/** Render im nächsten Frame, mehrere Aufrufe (z. B. Snapshots aller Sammlungen) werden zusammengefasst. */
+export function scheduleRender() {
+  if (!frame) frame = requestAnimationFrame(() => { frame = 0; render(); });
+}
+
 export function render() {
+  if (frame) { cancelAnimationFrame(frame); frame = 0; }
   // Eigene Person wurde entfernt oder existiert in diesem Haushalt nicht
   if (!state.setupStep && state.code && state.setupLoaded && !state.setup.people.some((p) => p.id === state.name)) state.setupStep = 'name';
   if (state.setupStep) return renderSetup();

@@ -7,8 +7,15 @@ import { avatar, carBadge, icon, initialOf, person, shortDay, toast, weekdayOf }
 import { dueLabel, renderReminderSection } from './reminders.js';
 
 /* ---------- Kalender ---------- */
+// Index wird neu aufgebaut, sobald ein Snapshot state.bookings ersetzt (Dokument-ID = {date}_{car}, also eindeutig)
+let indexed = null;
+let index = new Map();
 export function bookingFor(iso, car) {
-  return state.bookings.find((b) => b.date === iso && b.car === car) || null;
+  if (indexed !== state.bookings) {
+    indexed = state.bookings;
+    index = new Map(state.bookings.map((b) => [`${b.date}_${b.car}`, b]));
+  }
+  return index.get(`${iso}_${car}`) || null;
 }
 
 /** Vorlesbare Beschreibung eines Tages, z. B. „Mittwoch, 14. Oktober 2026: Fiat 500e Lukas, Citroën frei“ */

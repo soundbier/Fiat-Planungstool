@@ -1,4 +1,3 @@
-import qrcode from 'qrcode-generator';
 import { carOf, cc, pc, personName } from './state.js';
 import { esc } from './lib/util.js';
 
@@ -17,11 +16,22 @@ export function errText(e) {
   return e?.message || String(e);
 }
 
-export function qrSvg(text) {
+/** @type {any} */
+let qrcode = null;
+function qrTag(text) {
   const qr = qrcode(0, 'M');
   qr.addData(text);
   qr.make();
   return qr.createSvgTag({ cellSize: 6, margin: 2, scalable: true });
+}
+/** QR-Code als SVG; die Bibliothek wird beim ersten Mal nachgeladen und füllt dann die Platzhalter. */
+export function qrSvg(text) {
+  if (qrcode) return qrTag(text);
+  import('qrcode-generator').then((m) => {
+    qrcode = m.default;
+    document.querySelectorAll('[data-qr]').forEach((el) => { el.innerHTML = qrTag(/** @type {HTMLElement} */ (el).dataset.qr); });
+  }, (e) => console.warn('QR-Code', e));
+  return `<span data-qr="${esc(text)}" role="img" aria-label="QR-Code wird geladen"></span>`;
 }
 
 export function toast(msg, action) {

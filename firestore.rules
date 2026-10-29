@@ -166,10 +166,12 @@ service cloud.firestore {
         allow delete: if isMember(code);
       }
 
+      // createdAt in der Vergangenheit: „Code erneuern“ übernimmt die ursprüngliche Erfassungszeit.
       match /entries/{id} {
         allow get, list: if isMember(code);
         allow create: if isMember(code) && validEntry(request.resource.data)
-          && request.resource.data.createdAt == request.time;
+          && (request.resource.data.createdAt == request.time
+            || (request.resource.data.createdAt is timestamp && request.resource.data.createdAt < request.time));
         allow update: if isMember(code) && validEntry(request.resource.data)
           && request.resource.data.createdAt == resource.data.createdAt;
         allow delete: if isMember(code);
