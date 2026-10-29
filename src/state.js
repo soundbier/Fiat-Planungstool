@@ -10,7 +10,7 @@ export const LS_MEMBER = 'autoplaner.member';
 
 export const SWATCHES = ['#2c5d8f', '#a8324a', '#1f7a6d', '#7a4bb0', '#c2581b', '#3b7d2a', '#b0477f', '#4a4a48'];
 
-export const DEFAULT_PREFS = { theme: 'system', scheme: 'warm', size: 'normal', startTab: 'calendar', calView: 'month', colors: {} };
+export const DEFAULT_PREFS = { theme: 'system', scheme: 'warm', size: 'normal', startTab: 'calendar', calView: 'month', statsHidden: [], colors: {} };
 
 /**
  * Gesamter UI-Zustand. Firestore-Daten werden per Snapshot-Listener hineingeschrieben (household.js).
@@ -20,6 +20,7 @@ export const DEFAULT_PREFS = { theme: 'system', scheme: 'warm', size: 'normal', 
  *   reminders: import('./lib/model.js').Reminder[], recurring: import('./lib/model.js').Recurring[], setup: import('./lib/model.js').Setup, setupLoaded: boolean,
  *   members: any[], config: { locked: boolean }, invite: { link: string, expires: number } | null,
  *   showCode: boolean, busy: boolean, month: Date, week: string, selectedDay: string, statsPeriod: string,
+ *   statsTab: 'vehicle' | 'finance', statsCar: string, statsCustomize: boolean,
  *   entryCar: string | null, entryType: string, reminderSheet: string | null, dayDialog: string | null,
  *   copyWeek: string | null, entrySheet: boolean, entryEdit: string | null, setupStep: string | null, error: string | null,
  *   sync: 'synced' | 'pending' | 'connecting' | 'offline', returnFocus: string | null
@@ -44,6 +45,9 @@ export const state = {
   week: mondayOf(isoDate(new Date())),
   selectedDay: isoDate(new Date()),
   statsPeriod: 'year',
+  statsTab: 'vehicle',
+  statsCar: 'all',
+  statsCustomize: false,
   entryCar: null,
   entryType: 'fuel',
   reminderSheet: null,
@@ -60,7 +64,7 @@ export const state = {
 function loadPrefs() {
   try {
     const p = JSON.parse(localStorage.getItem(LS_PREFS)) || {};
-    return { ...DEFAULT_PREFS, ...p, colors: { ...DEFAULT_PREFS.colors, ...p.colors } };
+    return { ...DEFAULT_PREFS, ...p, statsHidden: Array.isArray(p.statsHidden) ? p.statsHidden : [], colors: { ...DEFAULT_PREFS.colors, ...p.colors } };
   } catch { return { ...DEFAULT_PREFS, colors: { ...DEFAULT_PREFS.colors } }; }
 }
 

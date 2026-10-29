@@ -112,6 +112,7 @@ describe('Auswertung', () => {
     expect(s.totalCost).toBe(393);
     expect(s.totalPer100).toBeCloseTo(39.3);
     expect(s.avgPrice).toBeCloseTo(193 / 105);
+    expect([s.consumedAmount, s.fuelKm, s.fuelAmount]).toEqual([65, 1000, 105]); // Werte für die Erklärung
     expect(s.byType).toEqual([{ id: 'service', label: 'Werkstatt / Service', value: 200 }]);
   });
   it('carStats: Zeitraum und leere Daten', () => {
@@ -253,6 +254,7 @@ describe('Kilometer und Werktage', () => {
   it('kmTrend: pro Monat und Tendenz', () => {
     const t = kmTrend([odo('2026-01-01', 1000), odo('2026-02-01', 1310), odo('2026-07-20', 3000)], 'fiat', '0000-00-00', '2026-08-01');
     expect(t.odometer).toBe(3000);
+    expect([t.startOdometer, t.startDate, t.days]).toEqual([1000, '2026-01-01', 200]);
     expect(t.perYear).toBeCloseTo(2000 / 200 * 365);
     expect(t.months.find((m) => m.key === '2026-02').value).toBe(310);
     expect(t.recentPerMonth).not.toBeNull();

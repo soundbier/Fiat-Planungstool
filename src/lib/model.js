@@ -255,6 +255,10 @@ export function carStats(entries, car, from) {
     fuelCount: fuel.length,
     km,
     fuelCost,
+    fuelKm,
+    fuelAmount,
+    consumedAmount: sum(rest, 'amount'),
+    consumedCost: sum(rest, 'cost'),
     byType,
     consumption: fuelKm > 0 ? sum(rest, 'amount') / fuelKm * 100 : null,
     costPer100: fuelKm > 0 ? sum(rest, 'cost') / fuelKm * 100 : null,
@@ -344,6 +348,7 @@ export function kmTrend(entries, car, from, today) {
   });
   return {
     odometer: last.odo, date: last.date,
+    startOdometer: first.odo, startDate: first.date, days,
     perMonth: perDay == null ? null : perDay * 30.44,
     perYear: perDay == null ? null : perDay * 365,
     recentPerMonth: recent == null ? null : recent * 30.44,
