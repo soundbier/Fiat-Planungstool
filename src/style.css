@@ -564,7 +564,10 @@ button.row:active { background: var(--surface); }
 .avg-swatch { width: 16px; border-top: 1.5px dashed var(--text-2); }
 
 .transfers { display: flex; flex-direction: column; gap: var(--s-2); }
-.transfer { display: flex; align-items: center; gap: var(--s-2); min-height: var(--hit); font-size: var(--fs-md); }
+.transfer { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-2); min-height: var(--hit); font-size: var(--fs-md); }
+/* Namen nicht kürzen: bei wenig Platz bricht der Betrag in die nächste Zeile */
+.transfer .person { flex: none; max-width: 100%; }
+.transfer .person > span:last-child { white-space: normal; overflow-wrap: anywhere; }
 .transfer > .icon { width: 18px; height: 18px; color: var(--text-2); }
 .transfer strong { margin-left: auto; font-size: var(--fs-xl); line-height: var(--lh-xl); font-weight: 700; letter-spacing: var(--tight); }
 .settled { display: flex; align-items: center; gap: var(--s-2); min-height: var(--hit); color: var(--text-2); }
@@ -677,13 +680,13 @@ button.row:active { background: var(--surface); }
 @keyframes toast-out { to { opacity: 0; } }
 
 /* Schmale Bildschirme: Nutzungstabelle zeigt im Kopf nur die Initiale (Name bleibt vorlesbar),
-   ab drei Personen bis 600 px */
+   ab drei Personen bis 600 px und in der zweispaltigen Auswertung */
 @media (max-width: 419px) {
   .usage thead .person > span:last-child { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .wk { gap: var(--s-1); padding-left: 0; }
   .usage :is(th, td):not(:first-child) { padding-left: var(--s-2); }
 }
-@media (max-width: 599px) {
+@media (max-width: 599px), (min-width: 960px) {
   .usage:has(thead th:nth-child(5)) thead .person > span:last-child { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 }
 

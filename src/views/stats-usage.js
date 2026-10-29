@@ -26,12 +26,12 @@ function carUsage(u) {
     const open = !!state.expanded[k];
     return `
       <tr class="usage-month">
-        <th scope="row"><button class="disclosure" data-action="toggle" data-key="${k}" aria-expanded="${open}">
+        <th scope="row"><button class="disclosure" data-action="toggle" data-key="${k}" aria-expanded="${open}"${open ? ` aria-controls="${m.weeks.map((w) => `${k}-kw${w.kw}`).join(' ')}"` : ''}>
           <span><span class="usage-label">${esc(monthName(m.key))}</span><small>${m.workdays} ${m.workdays === 1 ? 'Werktag' : 'Werktage'}</small></span>${icon('chevron-down')}
         </button></th>${cells(m)}
       </tr>
       ${open ? `<tr class="usage-wd" aria-hidden="true"><td><span class="wk"><span class="wk-label"></span><span class="wk-slots">${['Mo', 'Di', 'Mi', 'Do', 'Fr'].map((d) => `<span>${d}</span>`).join('')}</span></span></td><td colspan="${cols - 1}"></td></tr>
-        ${m.weeks.map((w) => `<tr class="usage-week">
+        ${m.weeks.map((w) => `<tr class="usage-week" id="${k}-kw${w.kw}">
           <th scope="row"><span class="wk"><span class="wk-label">KW ${w.kw}</span>${slots(w)}</span></th>${cells(w)}
         </tr>`).join('')}` : ''}`;
   }).join('');
