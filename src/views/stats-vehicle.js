@@ -1,71 +1,100 @@
 import { carStats, consumptionSeries, kmTrend } from '../lib/model.js';
-import { esc, num } from '../lib/util.js';
+import { esc, eur, num } from '../lib/util.js';
 import { cc, isCombustion, state, today, typeLabel, unit } from '../state.js';
-import { barChart, lineChart } from './charts.js';
-import { arrange, fmtDate, renderWeekdays, shown, statsCars, tile, tiles } from './stats.js';
+import { carBadge, dateNum, icon } from '../ui.js';
+import { barChart, lineChart, shade, sparkline, stackBar } from './charts.js';
 
 const km = (v) => `${num.format(Math.round(v))} km`;
 const r1 = (v) => num.format(Math.round(v * 10) / 10);
+const fixed1 = (v) => v.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const kv = (rows) => `<dl class="kv">${rows.filter(Boolean).map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>`;
 
 function odoList(c) {
   const list = state.entries.filter((e) => e.car === c.id && Number.isFinite(e.odometer))
     .sort((a, b) => b.date.localeCompare(a.date) || /** @type {number} */ (b.odometer) - /** @type {number} */ (a.odometer));
   if (!list.length) return '';
-  const rows = list.slice(0, 5);
-  return `<h4>Letzte Kilometerstände</h4>
-    <ul class="odo-list">${rows.map((e, i) => {
-      const prev = list[i + 1];
-      const diff = prev ? /** @type {number} */ (e.odometer) - /** @type {number} */ (prev.odometer) : null;
-      return `<li>
-        <span class="odo-date">${fmtDate(e.date)}</span>
-        <span class="muted small-inline">${esc(typeLabel(e.type || 'fuel', c.id))}</span>
-        <strong>${km(/** @type {number} */ (e.odometer))}</strong>
-        <span class="muted odo-diff">${diff != null ? `+${num.format(diff)}` : ''}</span>
-        <button class="icon-btn small" data-action="edit-entry" data-id="${esc(e.id)}" aria-label="Eintrag vom ${fmtDate(e.date)} bearbeiten">✎</button>
-      </li>`;
-    }).join('')}</ul>`;
+  return `<ul class="rows">${list.slice(0, 5).map((e, i) => {
+    const prev = list[i + 1];
+    const diff = prev ? /** @type {number} */ (e.odometer) - /** @type {number} */ (prev.odometer) : null;
+    return `<li><button class="row" data-action="edit-entry" data-id="${esc(e.id)}">
+      <span class="row-main"><span class="row-title">${km(/** @type {number} */ (e.odometer))}</span><span class="row-sub">${dateNum(e.date)} · ${esc(typeLabel(e.type || 'fuel', c.id))}</span></span>
+      <span class="row-end">${diff != null ? `+${num.format(diff)} km` : ''}</span>
+    </button></li>`;
+  }).join('')}</ul>`;
 }
 
-function vehicleCard(c, from) {
+function kmForm(c, t) {
+  return `<form class="km-form" data-car="${esc(c.id)}">
+    <div class="inline-field">
+      <label class="field"><span>Neuer Kilometerstand</span><input name="odometer" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="${t ? num.format(t.odometer) : 'km'}" required></label>
+      <button class="btn">Eintragen</button>
+    </div>
+  </form>`;
+}
+
+function details(c, t, s, series) {
+  const u = unit(c.id);
+  const comb = isCombustion(c.id);
+  const fuel = comb ? 'Tanken' : 'Laden';
+  const vals = series.map((p) => p.value);
+  const trend = t && t.recentPerMonth != null
+    ? `${km(t.recentPerMonth)}/Monat${Math.abs(t.trend) >= 0.1 ? ` <span class="trend" aria-label="${t.trend > 0 ? 'steigend' : 'fallend'}">${icon(t.trend > 0 ? 'trending-up' : 'trending-down')}</span>` : ''}`
+    : '';
+  const vehicle = [
+    t && ['Kilometerstand', `${km(t.odometer)} <small>${dateNum(t.date)}</small>`],
+    t && ['Gefahren im Zeitraum', km(t.odometer - t.startOdometer)],
+    t?.perMonth != null && ['Ø pro Monat', km(t.perMonth)],
+    t?.perYear != null && ['Hochgerechnet pro Jahr', km(t.perYear)],
+    trend && ['Letzte 90 Tage', trend],
+    vals.length && ['Letzter Verbrauch', `${r1(vals[vals.length - 1])} ${u}/100 km`],
+    vals.length > 1 && ['Min / Max', `${r1(Math.min(...vals))} / ${r1(Math.max(...vals))} ${u}/100 km`]
+  ];
+  const costs = [
+    ['Gesamtkosten', `${eur.format(s.totalCost)} <small>${s.count} ${s.count === 1 ? 'Eintrag' : 'Einträge'}</small>`],
+    s.totalPer100 != null && ['Alle Kosten pro 100 km', eur.format(s.totalPer100)],
+    s.costPer100 != null && [`${fuel} pro 100 km`, eur.format(s.costPer100)],
+    [fuel, eur.format(s.fuelCost)],
+    s.avgPrice != null && ['Ø Preis', `${num.format(s.avgPrice)} €/${u}`]
+  ];
+  const parts = [{ label: fuel, value: s.fuelCost }, ...s.byType].filter((p) => p.value > 0).sort((a, b) => b.value - a.value);
+  return `
+    ${vehicle.some(Boolean) ? `<h3>Fahrzeug</h3>${kv(vehicle)}` : ''}
+    <h3>Kosten</h3>${kv(costs)}
+    ${parts.length > 1 ? `<h3>Kostenarten</h3>${stackBar(parts.map((p, i) => ({ ...p, color: shade(i) })))}` : ''}
+    ${s.months.some((m) => m.value) ? `<h3>Kosten pro Monat</h3>${barChart(s.months, c.id)}` : ''}
+    ${t && t.months.some((m) => m.value) ? `<h3>Kilometer pro Monat</h3>${barChart(t.months, c.id, km, 'Kilometer pro Monat')}` : ''}
+    ${series.length > 1 ? `<h3>Verbrauch je ${comb ? 'Tankfüllung' : 'Ladung'}</h3>${lineChart(series, c.id, u)}` : ''}
+    <h3>Kilometerstand</h3>
+    ${kmForm(c, t)}
+    ${odoList(c)}
+    <p class="footnote">Ø Verbrauch: ${comb ? 'getankte' : 'geladene'} Menge ab der zweiten ${comb ? 'Tankfüllung' : 'Ladung'} im Zeitraum ÷ gefahrene km × 100.${comb ? ' Aussagekräftig nur bei Volltankungen.' : ''} Hochrechnung: gefahrene km ÷ Tage × 365.</p>`;
+}
+
+/** Ein Auto: eine Kernzahl (Ø Verbrauch), Kosten je 100 km, kleine Verlaufslinie, Details auf Wunsch */
+export function renderCar(c, from) {
   const t = kmTrend(state.entries, c.id, from, today());
   const s = carStats(state.entries, c.id, from);
   const u = unit(c.id);
-  const series = consumptionSeries(state.entries, c.id, isCombustion(c.id)).filter((p) => p.date >= from);
-  const vals = series.map((p) => p.value);
-  const driven = t ? t.odometer - t.startOdometer : 0;
-  const arrow = !t || Math.abs(t.trend) < 0.1 ? '→' : t.trend > 0 ? '↑' : '↓';
-  const html = t ? {
-    odo: tile('odo', 'Kilometerstand', km(t.odometer), `Letzter eingetragener Stand vom ${fmtDate(t.date)} – aus Tank-, Lade- oder km-Einträgen.`, `<small>${fmtDate(t.date)}</small>`),
-    km: tile('km', 'Gefahrene km', km(driven), `${km(t.odometer)} (${fmtDate(t.date)}) − ${km(t.startOdometer)} (${fmtDate(t.startDate)}) = ${km(driven)}`),
-    perMonth: t.perMonth != null ? tile('perMonth', 'Ø pro Monat', km(t.perMonth), `${km(driven)} ÷ ${t.days} Tage × 30,44 Tage`) : '',
-    perYear: t.perYear != null ? tile('perYear', 'km pro Jahr', km(t.perYear), `${km(driven)} ÷ ${t.days} Tage × 365 Tage`) : '',
-    trend: t.recentPerMonth != null ? tile('trend', 'Tendenz', `${km(t.recentPerMonth)} <span class="trend ${arrow === '↑' ? 'up' : arrow === '↓' ? 'down' : ''}">${arrow}</span>`,
-      `km der letzten 90 Tage, hochgerechnet auf einen Monat. ${t.perMonth ? `Gegenüber Ø ${km(t.perMonth)}: ${t.trend > 0 ? '+' : ''}${Math.round(t.trend * 100)} %.` : ''} Pfeil erst ab ±10 %.`, '<small>pro Monat</small>') : ''
-  } : {};
-  Object.assign(html, {
-    consumption: s.consumption != null ? tile('consumption', 'Ø Verbrauch', `${r1(s.consumption)} <small>${u}/100 km</small>`,
-      `${r1(s.consumedAmount)} ${u} ÷ ${km(s.fuelKm)} × 100. Die erste ${isCombustion(c.id) ? 'Tankfüllung' : 'Ladung'} im Zeitraum zählt nicht mit, weil unklar ist, wofür sie verbraucht wurde.${isCombustion(c.id) ? ' Stimmt nur bei jedem Mal Volltanken.' : ''}`) : '',
-    lastConsumption: vals.length ? tile('lastConsumption', 'Letzter Verbrauch', `${r1(vals[vals.length - 1])} <small>${u}/100 km</small>`, `Menge der letzten ${isCombustion(c.id) ? 'Tankfüllung' : 'Ladung'} ÷ km seit der vorherigen × 100 (${fmtDate(series[series.length - 1].date)}).`) : '',
-    minmax: vals.length > 1 ? tile('minmax', 'Min / Max', `${r1(Math.min(...vals))} / ${r1(Math.max(...vals))}`, `Niedrigster und höchster Verbrauch einzelner ${isCombustion(c.id) ? 'Tankfüllungen' : 'Ladungen'} im Zeitraum.`, `<small>${u}/100 km</small>`) : ''
-  });
+  const comb = isCombustion(c.id);
+  const series = consumptionSeries(state.entries, c.id, comb).filter((p) => p.date >= from);
+  const driven = t ? t.odometer - t.startOdometer : s.km;
+  const facts = [
+    s.costPer100 != null ? `${eur.format(s.costPer100)} pro 100 km` : '',
+    driven > 0 ? `${km(driven)} gefahren` : ''
+  ].filter(Boolean);
+  const key = `car-${c.id}`;
+  const open = !!state.expanded[key];
+  const kpi = s.consumption != null
+    ? `<p class="kpi"><span class="kpi-value">${fixed1(s.consumption)}</span><span class="kpi-unit">${u}/100 km</span></p>
+       <p class="kpi-sub">Ø Verbrauch${facts.length ? ` · ${facts.join(' · ')}` : ''}</p>`
+    : `<p class="kpi"><span class="kpi-value kpi-empty">–</span><span class="kpi-unit">${u}/100 km</span></p>
+       <p class="kpi-sub">Verbrauch erscheint ab der zweiten ${comb ? 'Volltankung' : 'Ladung'} mit Kilometerstand.${facts.length ? ` ${facts.join(' · ')}.` : ''}</p>`;
   return `
-    <section class="card car-card cc"${cc(c.id)}>
-      <div class="card-head">
-        <h3>${esc(c.name)}</h3>
-        <form class="km-form inline" data-car="${esc(c.id)}">
-          <input name="odometer" inputmode="numeric" pattern="[0-9]*" placeholder="${t ? num.format(t.odometer) : 'Gesamt-km'}" aria-label="Neuer Kilometerstand ${esc(c.name)}" required>
-          <button class="btn primary sm">Eintragen</button>
-        </form>
-      </div>
-      ${tiles(arrange('vehicle', 'tile', html)) || '<p class="muted">Noch keine Kilometerstände im Zeitraum.</p>'}
-      ${arrange('vehicle', 'section', {
-        kmChart: shown('kmChart') && t && t.months.some((m) => m.value) ? `<h4>Kilometer pro Monat</h4>${barChart(t.months, c.id, km, 'Kilometer pro Monat')}` : '',
-        consChart: shown('consChart') && series.length > 1 ? `<h4>Verbrauch je ${isCombustion(c.id) ? 'Tankfüllung' : 'Ladung'}</h4>${lineChart(series, c.id, u)}` : '',
-        odoList: shown('odoList') ? odoList(c) : ''
-      })}
+    <section class="section"${cc(c.id)} aria-labelledby="${key}-title">
+      <div class="car-stat-head">${carBadge(c.id)}<h2 id="${key}-title">${esc(c.name)}</h2></div>
+      ${kpi}
+      ${series.length > 1 ? sparkline(series, c.id, u) : ''}
+      <button class="disclosure" data-action="toggle" data-key="${key}" aria-expanded="${open}"${open ? ` aria-controls="${key}-details"` : ''}>Details${icon('chevron-down')}</button>
+      ${open ? `<div class="details" id="${key}-details">${details(c, t, s, series)}</div>` : ''}
     </section>`;
-}
-
-export function renderVehicle(from) {
-  return `${statsCars().map((c) => vehicleCard(c, from)).join('')}${renderWeekdays(from)}`;
 }

@@ -4,19 +4,22 @@ import { addItem, deleteItem, ensureAuth, removeMember, revokeInvites, setLocked
 import { createNewHousehold, enterHousehold, leaveHousehold, newInvite, refreshSync, rotateCode, setHousehold, shareHousehold } from './household.js';
 import { ID_RE, REMINDER_PRESETS } from './lib/model.js';
 import { CODE_RE, addDays, esc, firstOfMonth, isoDate, mondayOf, parseInvite } from './lib/util.js';
-import { render, run } from './render.js';
-import { DEFAULT_PREFS, LS_CODE, LS_NAME, applyPrefs, prefs, setPref, state } from './state.js';
-import { app, blurActive, copyText, errText, focusBySelector, focusSelector, focusables, toast } from './ui.js';
-import { copyWeek, resetWeek, saveDayCar, updateDayWarning } from './views/calendar.js';
+import { TABS, render, run } from './render.js';
+import { LS_CODE, LS_NAME, applyPrefs, prefs, setPref, state } from './state.js';
+import { app, blurActive, copyText, errText, focusBySelector, focusSelector, focusables, icon, toast } from './ui.js';
+import { copyWeek, overrideDayCar, resetWeek, saveDayCar, updateDayWarning } from './views/calendar.js';
 import { exportCsv, exportJson, importFile } from './views/data.js';
-import { onEntryCarChange, submitEntry, updateEntryForm, updateEntryPreview } from './views/entries.js';
-import { moveMetric, submitKm, toggleMetric } from './views/stats.js';
+import { onEntryCarChange, submitEntry, syncNotePrefill, updateEntryForm, updateEntryPreview } from './views/entries.js';
+import { submitKm } from './views/stats.js';
 import { deleteReminder, reminderDone, submitReminder } from './views/reminders.js';
 import { removeFromSetup, submitSetup } from './views/settings.js';
 
 applyPrefs();
 
-if (['calendar', 'entries', 'reminders', 'stats'].includes(prefs.startTab)) state.tab = prefs.startTab;
+if (TABS.some((t) => t.id === prefs.startTab)) state.tab = prefs.startTab;
+
+/** Formular wurde bearbeitet: Eingaben überstehen Re-Renders (siehe render.js) */
+const markDirty = (form) => { if (form?.dataset.mode) form.dataset.dirty = '1'; };
 
 /* ---------- Events ---------- */
 app.addEventListener('click', (ev) => {
@@ -40,11 +43,11 @@ app.addEventListener('click', (ev) => {
       return;
     case 'new-invite': run(newInvite); return;
     case 'revoke-invites':
-      run(async () => { const n = await revokeInvites(state.code); state.invite = null; toast(`${n} Einladung(en) widerrufen`); });
+      run(async () => { const n = await revokeInvites(state.code); state.invite = null; toast(`${n} ${n === 1 ? 'Einladung' : 'Einladungen'} widerrufen`); });
       return;
     case 'toggle-lock': {
       const locked = el.checked;
-      run(() => setLocked(state.code, locked), locked ? 'Haushalt gesperrt' : 'Beitritt mit Code erlaubt');
+      run(() => setLocked(state.code, locked), locked ? 'Beitritt nur mit Einladung' : 'Beitritt mit Code erlaubt');
       return;
     }
     case 'remove-member':
@@ -53,7 +56,7 @@ app.addEventListener('click', (ev) => {
     case 'show-code': state.showCode = true; break;
     case 'rotate-code':
       if (confirm('Code wirklich erneuern? Alle anderen Geräte verlieren den Zugriff und brauchen eine neue Einladung.')) {
-        run(rotateCode, 'Neuer Code aktiv – jetzt neue Einladung erstellen');
+        run(rotateCode, 'Neuer Code aktiv. Jetzt neue Einladung erstellen.');
       }
       return;
     case 'goto-join': state.error = null; state.setupStep = 'join'; break;
@@ -71,7 +74,9 @@ app.addEventListener('click', (ev) => {
     case 'tab':
       state.tab = el.dataset.tab;
       state.dayDialog = null;
+      state.dayConflict = null;
       state.entrySheet = false;
+      state.entryEdit = null;
       state.reminderSheet = null;
       blurActive();
       app.innerHTML = '';
@@ -79,32 +84,61 @@ app.addEventListener('click', (ev) => {
       window.scrollTo(0, 0);
       focusBySelector(`button[data-action="tab"][data-tab="${state.tab}"]`);
       return;
+    case 'toggle': state.expanded[el.dataset.key] = !state.expanded[el.dataset.key]; break;
     case 'month':
       state.month = new Date(state.month.getFullYear(), state.month.getMonth() + Number(el.dataset.delta), 1);
-      break;
-    case 'period': state.statsPeriod = el.dataset.period; break;
-    case 'stats-tab': state.statsTab = el.dataset.tab === 'finance' ? 'finance' : 'vehicle'; break;
-    case 'stats-car': state.statsCar = el.dataset.car; break;
-    case 'stats-customize': state.statsCustomize = !state.statsCustomize; break;
-    case 'stats-reset': setPref('statsHidden', []); setPref('statsOrder', {}); break;
-    case 'stats-move': moveMetric(state.statsTab, el.dataset.id, Number(el.dataset.dir)); break;
-    case 'open-day':
-      state.returnFocus = focusSelector(el);
-      state.selectedDay = el.dataset.day;
-      state.dayDialog = el.dataset.day;
-      break;
-    case 'day-step':
-      state.dayDialog = addDays(state.dayDialog, Number(el.dataset.delta));
-      state.selectedDay = state.dayDialog;
       break;
     case 'month-today': state.month = firstOfMonth(new Date()); break;
     case 'cal-week': state.week = addDays(state.week, Number(el.dataset.delta)); break;
     case 'cal-week-today': state.week = mondayOf(isoDate(new Date())); break;
-    case 'week':
-      state.copyWeek = addDays(state.copyWeek || mondayOf(isoDate(new Date())), Number(el.dataset.delta));
+    case 'period': state.statsPeriod = el.dataset.period; break;
+    case 'open-day':
+      state.returnFocus = focusSelector(el);
+      state.dayDialog = el.dataset.day;
+      state.dayConflict = null;
       break;
-    case 'open-entry': state.returnFocus = focusSelector(el); state.entryEdit = null; state.entrySheet = true; break;
+    case 'day-step':
+      state.dayDialog = addDays(state.dayDialog, Number(el.dataset.delta));
+      state.dayConflict = null;
+      break;
+    case 'day-override': overrideDayCar(); break;
+    case 'day-keep': state.dayConflict = null; break;
+    case 'close-day':
+      if (ev.target !== el && !el.matches('button')) return; // Klicks im Sheet nicht als Klick auf den Hintergrund werten
+      state.dayDialog = null;
+      state.dayConflict = null;
+      break;
+    case 'copy-week': copyWeek(); return;
+    case 'reset-week': resetWeek(); return;
     case 'edit-entry': state.returnFocus = focusSelector(el); state.entryEdit = el.dataset.id; state.entrySheet = true; break;
+    case 'close-entry':
+      if (ev.target !== el && !el.matches('button')) return;
+      state.entrySheet = false;
+      state.entryEdit = null;
+      break;
+    case 'delete-entry': {
+      const entry = state.entries.find((e) => e.id === el.dataset.id);
+      if (!entry) return;
+      deleteItem(state.code, 'entries', entry.id).catch((e) => toast('Fehler: ' + e.message));
+      state.entrySheet = false;
+      state.entryEdit = null;
+      render();
+      toast('Eintrag gelöscht', {
+        label: 'Rückgängig',
+        run: () => {
+          const { id, createdAt, ...data } = entry;
+          addItem(state.code, 'entries', data).catch((e) => toast('Fehler: ' + e.message));
+        }
+      });
+      return;
+    }
+    case 'delete-recurring': {
+      const rec = state.recurring.find((r) => r.id === el.dataset.id);
+      if (!rec || !confirm('Wiederholung beenden? Bereits erfasste Einträge bleiben erhalten.')) return;
+      deleteItem(state.code, 'recurring', rec.id).catch((e) => toast('Fehler: ' + e.message));
+      toast('Wiederholung beendet');
+      break;
+    }
     case 'open-reminder': state.returnFocus = focusSelector(el); state.reminderSheet = el.dataset.id || 'new'; break;
     case 'close-reminder':
       if (ev.target !== el && !el.matches('button')) return;
@@ -120,47 +154,9 @@ app.addEventListener('click', (ev) => {
     case 'remove-person': removeFromSetup('person', el.dataset.id); return;
     case 'remove-car': removeFromSetup('car', el.dataset.id); return;
     case 'export-json': exportJson(); return;
-    case 'import': document.getElementById('import-file')?.click(); return;
-    case 'close-entry':
-      if (ev.target !== el && !el.matches('button')) return;
-      state.entrySheet = false;
-      state.entryEdit = null;
-      break;
-    case 'close-day':
-      if (ev.target !== el && !el.matches('button')) return; // Klicks im Dialog nicht als Overlay-Klick werten
-      state.dayDialog = null;
-      break;
-    case 'copy-week': copyWeek(); return;
-    case 'reset-week': resetWeek(); return;
     case 'export-csv': exportCsv(); return;
+    case 'import': document.getElementById('import-file')?.click(); return;
     case 'pref': setPref(el.dataset.key, el.dataset.value); break;
-    case 'reset-prefs': {
-      const before = structuredClone(prefs);
-      const restore = (p) => { Object.assign(prefs, p, { colors: { ...p.colors } }); setPref('theme', prefs.theme); render(); };
-      restore(DEFAULT_PREFS);
-      toast('Darstellung zurückgesetzt', { label: 'Rückgängig', run: () => restore(before) });
-      return;
-    }
-    case 'delete-recurring': {
-      const rec = state.recurring.find((r) => r.id === el.dataset.id);
-      if (!rec || !confirm('Wiederholung beenden? Bereits erfasste Einträge bleiben erhalten.')) return;
-      deleteItem(state.code, 'recurring', rec.id).catch((e) => toast('Fehler: ' + e.message));
-      toast('Wiederholung beendet');
-      break;
-    }
-    case 'delete-entry': {
-      const entry = state.entries.find((e) => e.id === el.dataset.id);
-      if (!entry) return;
-      deleteItem(state.code, 'entries', entry.id).catch((e) => toast('Fehler: ' + e.message));
-      toast('Eintrag gelöscht', {
-        label: 'Rückgängig',
-        run: () => {
-          const { id, createdAt, ...data } = entry;
-          addItem(state.code, 'entries', data).catch((e) => toast('Fehler: ' + e.message));
-        }
-      });
-      return;
-    }
     default: return;
   }
   render();
@@ -174,11 +170,15 @@ app.addEventListener('change', (ev) => {
     if (file) importFile(file);
     return;
   }
-  if (target.dataset.metric) { toggleMetric(target.dataset.metric, target.checked); render(); return; }
   const form = target.form;
+  markDirty(form);
   if (form?.id === 'day-form') { updateDayWarning(form); saveDayCar(form, target.name); }
-  if (form?.id === 'entry-form' && target.name === 'car') onEntryCarChange(form);
-  if (form?.id === 'entry-form' && target.name === 'type') { state.entryType = target.value; updateEntryForm(form); }
+  if (form?.dataset.form === 'entry' && target.name === 'car') onEntryCarChange(form);
+  if (form?.dataset.form === 'entry' && target.name === 'type') {
+    if (form.dataset.mode === 'new') state.entryType = target.value;
+    syncNotePrefill(form);
+    updateEntryForm(form);
+  }
   if (form?.id === 'reminder-form' && target.name === 'title') {
     const preset = REMINDER_PRESETS.find(([t]) => t === target.value);
     if (preset && !form.dataset.id) /** @type {HTMLSelectElement} */ (form.elements.namedItem('intervalMonths')).value = String(preset[1]);
@@ -186,9 +186,9 @@ app.addEventListener('change', (ev) => {
 });
 
 app.addEventListener('input', (ev) => {
-  const target = /** @type {HTMLInputElement} */ (ev.target);
-  const form = target.form;
-  if (form?.id === 'entry-form') updateEntryPreview(form);
+  const form = /** @type {HTMLInputElement} */ (ev.target).form;
+  markDirty(form);
+  if (form?.dataset.form === 'entry') updateEntryPreview(form);
 });
 
 app.addEventListener('submit', (ev) => {
@@ -196,7 +196,7 @@ app.addEventListener('submit', (ev) => {
   const form = /** @type {HTMLFormElement} */ (ev.target);
   blurActive();
   if (form.id === 'day-form') return;
-  if (form.id === 'entry-form') submitEntry(form);
+  if (form.dataset.form === 'entry') submitEntry(form);
   else if (form.id === 'reminder-form') submitReminder(form);
   else if (form.id === 'setup-form') submitSetup(form);
   else if (form.classList.contains('km-form')) submitKm(form);
@@ -221,11 +221,11 @@ app.addEventListener('submit', (ev) => {
   }
 });
 
-/* ---------- Tastatur: Dialoge schließen (Esc) und Fokus im Dialog halten (Tab) ---------- */
+/* ---------- Tastatur: Sheets schließen (Esc) und Fokus im Sheet halten (Tab) ---------- */
 
 function closeDialog() {
-  if (state.dayDialog) state.dayDialog = null;
-  else if (state.entrySheet) state.entrySheet = false;
+  if (state.dayDialog) { state.dayDialog = null; state.dayConflict = null; }
+  else if (state.entrySheet) { state.entrySheet = false; state.entryEdit = null; }
   else if (state.reminderSheet) state.reminderSheet = null;
   else return false;
   blurActive();
@@ -234,7 +234,7 @@ function closeDialog() {
 }
 
 document.addEventListener('keydown', (ev) => {
-  const box = /** @type {HTMLElement | null} */ (app.querySelector('.dialog'));
+  const box = /** @type {HTMLElement | null} */ (app.querySelector('.sheet'));
   if (!box) return;
   if (ev.key === 'Escape') {
     if (closeDialog()) ev.preventDefault();
@@ -249,7 +249,7 @@ document.addEventListener('keydown', (ev) => {
   else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
 });
 
-/* ---------- Wischgesten: Monat/Woche im Kalender, Tag im Tagesdialog ---------- */
+/* ---------- Wischgesten: Monat/Woche im Kalender, Tag im Tages-Sheet ---------- */
 
 let touch = null;
 app.addEventListener('touchstart', (ev) => {
@@ -269,7 +269,7 @@ app.addEventListener('touchend', (ev) => {
   else if (zone === 'day' && state.dayDialog) {
     if (app.querySelector('#day-form')?.contains(document.activeElement)) blurActive();
     state.dayDialog = addDays(state.dayDialog, dir);
-    state.selectedDay = state.dayDialog;
+    state.dayConflict = null;
   } else return;
   render();
 }, { passive: true });
@@ -288,7 +288,7 @@ app.addEventListener('focusout', (ev) => {
   }, 0);
 });
 
-/* ---------- Boot ---------- */
+/* ---------- Start ---------- */
 async function boot() {
   // Neues Format: /#h=CODE&i=TOKEN; altes /?h=CODE wird weiter akzeptiert.
   const link = parseInvite(location.href, location.origin);
@@ -298,8 +298,9 @@ async function boot() {
   try {
     await ensureAuth();
   } catch (e) {
-    app.innerHTML = `<main class="setup"><h1>Verbindung fehlgeschlagen</h1><p class="error">${esc(e.message)}</p>
-      <button class="btn primary block" data-action="reload">Erneut versuchen</button></main>`;
+    app.innerHTML = `<main class="onboard">
+      <div class="onboard-top"><h1>Keine Verbindung</h1><p class="lead">Die Anmeldung ist fehlgeschlagen. Prüfe die Internetverbindung.</p><p class="error">${esc(e.message)}</p></div>
+      <div class="onboard-actions"><button class="btn btn-primary btn-block" data-action="reload">${icon('refresh-cw')}Erneut versuchen</button></div></main>`;
     return;
   }
 

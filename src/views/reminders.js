@@ -2,38 +2,42 @@ import { addItem, deleteItem, updateItem } from '../firebase.js';
 import { DUE_SOON_DAYS, REMINDER_PRESETS, dueIn, intervalLabel, validateReminder } from '../lib/model.js';
 import { addMonths, esc, fmtDate, isoDate } from '../lib/util.js';
 import { render } from '../render.js';
-import { carName, carOf, cars, cc, state, today } from '../state.js';
-import { icon, toast } from '../ui.js';
+import { carOf, cars, state, today } from '../state.js';
+import { carBadge, dateNum, icon, toast } from '../ui.js';
 
 export function dueLabel(r) {
   const d = dueIn(r, today());
   if (d < 0) return `<span class="due overdue">${-d} ${-d === 1 ? 'Tag' : 'Tage'} überfällig</span>`;
-  if (d === 0) return '<span class="due overdue">heute</span>';
+  if (d === 0) return '<span class="due overdue">heute fällig</span>';
   return `<span class="due${d <= DUE_SOON_DAYS ? ' soon' : ''}">in ${d} ${d === 1 ? 'Tag' : 'Tagen'}</span>`;
 }
 
-export function renderReminders() {
+/** Fristen als Abschnitt im Kalender (fällige stehen zusätzlich oben) */
+export function renderReminderSection() {
   const list = [...state.reminders].sort((a, b) => a.due.localeCompare(b.due));
   return `
-    <button class="btn primary block add-btn" data-action="open-reminder">${icon('plus')}<span>Frist hinzufügen</span></button>
-    ${list.length ? `<section class="card"><ul class="list">${list.map((r) => `
-      <li class="item">
-        <span class="car-tag cc"${cc(r.car)}>${esc(carOf(r.car)?.short || '?')}</span>
-        <div class="grow">
-          <strong>${esc(r.title)}</strong> ${dueLabel(r)}
-          <div class="note">${esc(carName(r.car))} · ${fmtDate(r.due)} · ${intervalLabel(r.intervalMonths)}${r.note ? ` · ${esc(r.note)}` : ''}</div>
-        </div>
-        <div class="item-actions">
-          <button class="btn btn-sm" data-action="reminder-done" data-id="${esc(r.id)}">Erledigt</button>
-          <button class="icon-btn small" data-action="open-reminder" data-id="${esc(r.id)}" aria-label="Bearbeiten">${icon('edit')}</button>
-        </div>
-      </li>`).join('')}</ul></section>` : `
-      <section class="card empty-state">
-        <span class="empty-icon">${icon('bell')}</span>
-        <p><strong>Keine Fristen</strong></p>
-        <p class="muted">HU/TÜV, Service, Reifenwechsel, Versicherung … eintragen. Fällige Fristen (≤ ${DUE_SOON_DAYS} Tage) erscheinen im Kalender und als Zähler im Menü.</p>
-      </section>`}
-    ${state.reminderSheet ? renderReminderSheet() : ''}`;
+    <section class="section" aria-labelledby="reminders-title">
+      <div class="section-head">
+        <h2 id="reminders-title">Fristen</h2>
+        <button class="btn-quiet" data-action="open-reminder">${icon('plus')}Neu</button>
+      </div>
+      ${list.length ? `<ul class="rows">${list.map((r) => `
+        <li class="row-split">
+          <button class="row" data-action="open-reminder" data-id="${esc(r.id)}">
+            ${carBadge(r.car)}
+            <span class="row-main">
+              <span class="row-title">${esc(r.title)}</span>
+              <span class="row-sub">${dateNum(r.due)} · ${intervalLabel(r.intervalMonths)}${r.note ? ` · ${esc(r.note)}` : ''}</span>
+            </span>
+            ${dueLabel(r)}
+          </button>
+          <button class="icon-btn" data-action="reminder-done" data-id="${esc(r.id)}" aria-label="${esc(r.title)} erledigt">${icon('check')}</button>
+        </li>`).join('')}</ul>` : `
+        <div class="empty">
+          <p class="empty-title">Keine Fristen</p>
+          <p>HU, Service, Reifenwechsel oder Versicherung eintragen. Fristen in den nächsten ${DUE_SOON_DAYS} Tagen stehen oben im Kalender.</p>
+        </div>`}
+    </section>`;
 }
 
 export function renderReminderSheet() {
@@ -43,26 +47,31 @@ export function renderReminderSheet() {
   const ivs = [...new Set([0, 1, 3, 6, 12, 24, 36, iv])].sort((a, b) => a - b);
   return `
     <div class="overlay" data-action="close-reminder">
-      <form class="dialog" id="reminder-form" data-id="${esc(r?.id || '')}" role="dialog" aria-modal="true" aria-labelledby="reminder-title">
+      <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="reminder-title">
         <div class="sheet-head">
-          <h3 id="reminder-title">${r ? 'Frist bearbeiten' : 'Neue Frist'}</h3>
-          <button class="icon-btn" type="button" data-action="close-reminder" aria-label="Schließen">${icon('close')}</button>
+          <h2 id="reminder-title">${r ? 'Frist bearbeiten' : 'Neue Frist'}</h2>
+          <button class="icon-btn" type="button" data-action="close-reminder" aria-label="Schließen">${icon('x')}</button>
         </div>
-        <div class="seg">
-          ${cars().map((c) => `<label class="seg-opt"><input type="radio" name="car" value="${c.id}" ${c.id === car ? 'checked' : ''}><span>${esc(c.name)}</span></label>`).join('')}
-        </div>
-        <label><span>Was</span><input name="title" list="reminder-presets" maxlength="80" required value="${esc(r?.title || '')}" placeholder="z. B. HU / TÜV"></label>
-        <datalist id="reminder-presets">${REMINDER_PRESETS.map(([t]) => `<option value="${esc(t)}">`).join('')}</datalist>
-        <div class="row">
-          <label><span>Fällig am</span><input type="date" name="due" required value="${esc(r?.due || '')}"></label>
-          <label><span>Wiederholung</span><select name="intervalMonths">
-            ${ivs.map((n) => `<option value="${n}" ${n === iv ? 'selected' : ''}>${intervalLabel(n)}</option>`).join('')}
-          </select></label>
-        </div>
-        <label><span>Notiz</span><input name="note" maxlength="300" placeholder="optional" value="${esc(r?.note || '')}"></label>
-        <button class="btn primary block" type="submit">Speichern</button>
-        ${r ? `<button class="btn danger block" type="button" data-action="delete-reminder" data-id="${esc(r.id)}">Löschen</button>` : ''}
-      </form>
+        <form id="reminder-form" data-id="${esc(r?.id || '')}" data-mode="${esc(r?.id || 'new')}">
+          <fieldset>
+            <legend class="sr-only">Auto</legend>
+            <div class="seg">
+              ${cars().map((c) => `<label class="seg-opt"><input type="radio" name="car" value="${c.id}"${c.id === car ? ' checked' : ''}><span>${carBadge(c.id)}<span>${esc(c.name)}</span></span></label>`).join('')}
+            </div>
+          </fieldset>
+          <label class="field"><span>Was</span><input name="title" list="reminder-presets" maxlength="80" required value="${esc(r?.title || '')}" placeholder="z. B. HU / TÜV" autocomplete="off"></label>
+          <datalist id="reminder-presets">${REMINDER_PRESETS.map(([t]) => `<option value="${esc(t)}">`).join('')}</datalist>
+          <div class="field-row">
+            <label class="field"><span>Fällig am</span><input type="date" name="due" required value="${esc(r?.due || '')}"></label>
+            <label class="field"><span>Wiederholung</span><select name="intervalMonths">
+              ${ivs.map((n) => `<option value="${n}"${n === iv ? ' selected' : ''}>${intervalLabel(n)}</option>`).join('')}
+            </select></label>
+          </div>
+          <label class="field"><span>Notiz</span><input name="note" maxlength="300" placeholder="optional" value="${esc(r?.note || '')}" autocomplete="off"></label>
+          <button class="btn btn-primary btn-block" type="submit">Speichern</button>
+          ${r ? `<button class="btn btn-danger btn-block" type="button" data-action="delete-reminder" data-id="${esc(r.id)}">Frist löschen</button>` : ''}
+        </form>
+      </div>
     </div>`;
 }
 
@@ -91,7 +100,7 @@ export function reminderDone(id) {
     let next = addMonths(r.due, r.intervalMonths);
     if (next < isoDate(new Date())) next = addMonths(isoDate(new Date()), r.intervalMonths);
     updateItem(state.code, 'reminders', r.id, { due: next }).catch(err);
-    toast(`Erledigt – nächster Termin ${fmtDate(next)}`, {
+    toast(`Erledigt. Nächster Termin ${fmtDate(next)}`, {
       label: 'Rückgängig', run: () => updateItem(state.code, 'reminders', r.id, { due: r.due }).catch(err)
     });
   } else deleteReminder(r, 'Erledigt');

@@ -1,16 +1,16 @@
 import { ALL, DEFAULT_SETUP, ID_RE, SHARED, SPECIAL_NAMES, TYPES } from './lib/model.js';
 import { firstOfMonth, isoDate, mondayOf } from './lib/util.js';
 
-export const CAR_COLORS = ['#1f7a6d', '#c2581b', '#7a4bb0', '#3b7d2a', '#b0477f', '#2c5d8f', '#8a6d1d', '#4a4a48'];
+/** Feste Identitätsfarben (Tokens --id-* in style.css), vergeben nach Position in den Stammdaten */
+export const PERSON_COLORS = ['blue', 'ochre', 'green', 'slate', 'brown', 'plum', 'teal'];
+export const CAR_COLORS = ['teal', 'plum', 'brown', 'slate', 'green', 'ochre', 'blue'];
 
 export const LS_CODE = 'autoplaner.household';
 export const LS_NAME = 'autoplaner.name';
 export const LS_PREFS = 'autoplaner.prefs';
 export const LS_MEMBER = 'autoplaner.member';
 
-export const SWATCHES = ['#2c5d8f', '#a8324a', '#1f7a6d', '#7a4bb0', '#c2581b', '#3b7d2a', '#b0477f', '#4a4a48'];
-
-export const DEFAULT_PREFS = { theme: 'system', scheme: 'warm', size: 'normal', startTab: 'calendar', calView: 'month', statsHidden: [], statsOrder: {}, colors: {} };
+export const DEFAULT_PREFS = { theme: 'system', size: 'normal', startTab: 'calendar', calView: 'week' };
 
 /**
  * Gesamter UI-Zustand. Firestore-Daten werden per Snapshot-Listener hineingeschrieben (household.js).
@@ -19,10 +19,10 @@ export const DEFAULT_PREFS = { theme: 'system', scheme: 'warm', size: 'normal', 
  *   bookings: import('./lib/model.js').Booking[], entries: import('./lib/model.js').Entry[],
  *   reminders: import('./lib/model.js').Reminder[], recurring: import('./lib/model.js').Recurring[], setup: import('./lib/model.js').Setup, setupLoaded: boolean,
  *   members: any[], config: { locked: boolean }, invite: { link: string, expires: number } | null,
- *   showCode: boolean, busy: boolean, month: Date, week: string, selectedDay: string, statsPeriod: string,
- *   statsTab: 'vehicle' | 'finance', statsCar: string, statsCustomize: boolean,
+ *   showCode: boolean, busy: boolean, month: Date, week: string, statsPeriod: string, expanded: Record<string, boolean>,
  *   entryCar: string | null, entryType: string, reminderSheet: string | null, dayDialog: string | null,
- *   copyWeek: string | null, entrySheet: boolean, entryEdit: string | null, setupStep: string | null, error: string | null,
+ *   dayConflict: { iso: string, car: string, driver: string | null, other: string } | null,
+ *   entrySheet: boolean, entryEdit: string | null, setupStep: string | null, error: string | null,
  *   sync: 'synced' | 'pending' | 'connecting' | 'offline', returnFocus: string | null
  * }}
  */
@@ -43,16 +43,13 @@ export const state = {
   busy: false,
   month: firstOfMonth(new Date()),
   week: mondayOf(isoDate(new Date())),
-  selectedDay: isoDate(new Date()),
   statsPeriod: 'year',
-  statsTab: 'vehicle',
-  statsCar: 'all',
-  statsCustomize: false,
+  expanded: {},
   entryCar: null,
   entryType: 'fuel',
   reminderSheet: null,
   dayDialog: null,
-  copyWeek: null,
+  dayConflict: null,
   entrySheet: false,
   entryEdit: null,
   setupStep: null,
@@ -62,34 +59,38 @@ export const state = {
 };
 
 function loadPrefs() {
-  try {
-    const p = JSON.parse(localStorage.getItem(LS_PREFS)) || {};
-    return { ...DEFAULT_PREFS, ...p, statsHidden: Array.isArray(p.statsHidden) ? p.statsHidden : [], statsOrder: p.statsOrder && typeof p.statsOrder === 'object' ? p.statsOrder : {}, colors: { ...DEFAULT_PREFS.colors, ...p.colors } };
-  } catch { return { ...DEFAULT_PREFS, colors: { ...DEFAULT_PREFS.colors } }; }
+  let p = {};
+  try { p = JSON.parse(localStorage.getItem(LS_PREFS)) || {}; } catch {}
+  return Object.fromEntries(Object.entries(DEFAULT_PREFS).map(([k, v]) => [k, typeof p[k] === 'string' ? p[k] : v]));
 }
 
 export const prefs = loadPrefs();
 
+const darkQuery = window.matchMedia?.('(prefers-color-scheme: dark)');
+
 export function applyPrefs() {
   const root = document.documentElement;
   if (prefs.theme === 'system') delete root.dataset.theme; else root.dataset.theme = prefs.theme;
-  if (prefs.scheme === 'warm') delete root.dataset.scheme; else root.dataset.scheme = prefs.scheme;
   if (prefs.size === 'normal') delete root.dataset.size; else root.dataset.size = prefs.size;
+  // Statusleiste (PWA) passend zum aktiven Modus
+  const dark = prefs.theme === 'dark' || (prefs.theme === 'system' && !!darkQuery?.matches);
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#0e0e10' : '#ffffff');
   applyColors();
 }
+darkQuery?.addEventListener?.('change', applyPrefs);
 
 // Personen-/Autofarben als CSS-Variablen (--p-<id>, --car-<id>); IDs sind durch ID_RE CSS-sicher.
 export function applyColors() {
   const st = document.documentElement.style;
-  people().forEach((p, i) => st.setProperty(`--p-${p.id}`, prefs.colors[p.id] || SWATCHES[i % SWATCHES.length]));
-  st.setProperty(`--p-${SHARED}`, '#6b6b66');
-  st.setProperty(`--p-${ALL}`, '#6b6b66');
-  cars().forEach((c, i) => st.setProperty(`--car-${c.id}`, CAR_COLORS[i % CAR_COLORS.length]));
+  people().forEach((p, i) => st.setProperty(`--p-${p.id}`, `var(--id-${PERSON_COLORS[i % PERSON_COLORS.length]})`));
+  st.setProperty(`--p-${SHARED}`, 'var(--id-neutral)');
+  st.setProperty(`--p-${ALL}`, 'var(--id-neutral)');
+  cars().forEach((c, i) => st.setProperty(`--car-${c.id}`, `var(--id-${CAR_COLORS[i % CAR_COLORS.length]})`));
 }
 
 export function setPref(key, value) {
-  if (key.startsWith('color-')) prefs.colors[key.slice(6)] = value;
-  else prefs[key] = value;
+  if (!(key in DEFAULT_PREFS)) return;
+  prefs[key] = value;
   try { localStorage.setItem(LS_PREFS, JSON.stringify(prefs)); } catch {}
   applyPrefs();
 }
@@ -114,9 +115,9 @@ export function typeLabel(type, car) {
   return TYPES.find((t) => t.id === type)?.label || type;
 }
 
-export const pc = (id) => (ID_RE.test(id) ? ` style="--pc:var(--p-${id})"` : '');
+export const pc = (id) => (ID_RE.test(id) ? ` style="--pc:var(--p-${id}, var(--id-neutral))"` : '');
 
-export const cc = (id) => (ID_RE.test(id) ? ` style="--cc:var(--car-${id})"` : '');
+export const cc = (id) => (ID_RE.test(id) ? ` style="--cc:var(--car-${id}, var(--id-neutral))"` : '');
 
 /** Heutiges Datum (lokal) als ISO-String */
 export function today() { return isoDate(new Date()); }
