@@ -10,7 +10,7 @@ import { app, blurActive, copyText, errText, focusBySelector, focusSelector, foc
 import { copyWeek, resetWeek, saveDayCar, updateDayWarning } from './views/calendar.js';
 import { exportCsv, exportJson, importFile } from './views/data.js';
 import { onEntryCarChange, submitEntry, updateEntryForm, updateEntryPreview } from './views/entries.js';
-import { submitKm } from './views/stats.js';
+import { moveMetric, submitKm, toggleMetric } from './views/stats.js';
 import { deleteReminder, reminderDone, submitReminder } from './views/reminders.js';
 import { removeFromSetup, submitSetup } from './views/settings.js';
 
@@ -83,6 +83,11 @@ app.addEventListener('click', (ev) => {
       state.month = new Date(state.month.getFullYear(), state.month.getMonth() + Number(el.dataset.delta), 1);
       break;
     case 'period': state.statsPeriod = el.dataset.period; break;
+    case 'stats-tab': state.statsTab = el.dataset.tab === 'finance' ? 'finance' : 'vehicle'; break;
+    case 'stats-car': state.statsCar = el.dataset.car; break;
+    case 'stats-customize': state.statsCustomize = !state.statsCustomize; break;
+    case 'stats-reset': setPref('statsHidden', []); setPref('statsOrder', {}); break;
+    case 'stats-move': moveMetric(state.statsTab, el.dataset.id, Number(el.dataset.dir)); break;
     case 'open-day':
       state.returnFocus = focusSelector(el);
       state.selectedDay = el.dataset.day;
@@ -169,6 +174,7 @@ app.addEventListener('change', (ev) => {
     if (file) importFile(file);
     return;
   }
+  if (target.dataset.metric) { toggleMetric(target.dataset.metric, target.checked); render(); return; }
   const form = target.form;
   if (form?.id === 'day-form') { updateDayWarning(form); saveDayCar(form, target.name); }
   if (form?.id === 'entry-form' && target.name === 'car') onEntryCarChange(form);

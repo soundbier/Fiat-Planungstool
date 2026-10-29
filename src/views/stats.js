@@ -1,8 +1,10 @@
-import { carStats, consumptionSeries, kmTrend, odometerIssues, settlement, validateEntry, weekdayUsage } from '../lib/model.js';
+import { odometerIssues, settlement, validateEntry, weekdayUsage } from '../lib/model.js';
 import { addItem } from '../firebase.js';
 import { toast } from '../ui.js';
 import { esc, eur, isoDate, num } from '../lib/util.js';
-import { cars, cc, isCombustion, pc, personName, state, today, unit } from '../state.js';
+import { cars, cc, pc, personName, prefs, setPref, state, today } from '../state.js';
+import { renderVehicle } from './stats-vehicle.js';
+import { renderFinance } from './stats-finance.js';
 
 /* ---------- Stats ---------- */
 export const PERIODS = [
@@ -18,44 +20,8 @@ export function periodStart() {
   return '0000-00-00';
 }
 
-export function barChart(months, car, fmt = (v) => eur.format(v), label = 'Kosten pro Monat') {
-  if (!months.length) return '<p class="muted">Keine Daten.</p>';
-  const barW = 28, gap = 10, h = 140, top = 18, bottom = 22;
-  const max = Math.max(1, ...months.map((m) => m.value));
-  const width = months.length * (barW + gap) + gap;
-  const bars = months.map((m, i) => {
-    const bh = (m.value / max) * (h - top - bottom);
-    const x = gap + i * (barW + gap);
-    const y = h - bottom - bh;
-    return `<g>
-      <title>${esc(m.label)}: ${fmt(m.value)}</title>
-      <rect x="${x}" y="${y}" width="${barW}" height="${Math.max(bh, m.value > 0 ? 1 : 0)}" rx="2" class="bar cc"/>
-      ${m.value > 0 ? `<text x="${x + barW / 2}" y="${y - 4}" class="bar-val">${Math.round(m.value)}</text>` : ''}
-      <text x="${x + barW / 2}" y="${h - 6}" class="bar-lbl">${esc(m.label)}</text>
-    </g>`;
-  }).join('');
-  return `<div class="chart-scroll"><svg class="chart"${cc(car)} viewBox="0 0 ${width} ${h}" width="${width}" height="${h}" role="img" aria-label="${label}">
-    <line x1="0" y1="${h - bottom}" x2="${width}" y2="${h - bottom}" class="axis"/>${bars}</svg></div>`;
-}
-
-export function lineChart(series, car, u) {
-  const step = 32, h = 120, top = 16, bottom = 20, pad = 16;
-  const vals = series.map((p) => p.value);
-  const min = Math.min(...vals), max = Math.max(...vals);
-  const span = max - min || 1;
-  const width = pad * 2 + (series.length - 1) * step;
-  const pts = series.map((p, i) => [pad + i * step, top + (1 - (p.value - min) / span) * (h - top - bottom)]);
-  return `<div class="chart-scroll"><svg class="chart"${cc(car)} viewBox="0 0 ${width} ${h}" width="${width}" height="${h}" role="img" aria-label="Verbrauch je Tank-/Ladevorgang">
-    <line x1="0" y1="${h - bottom}" x2="${width}" y2="${h - bottom}" class="axis"/>
-    <polyline points="${pts.map((p) => p.join(',')).join(' ')}" fill="none" stroke="var(--cc)" stroke-width="2"/>
-    ${series.map((p, i) => `<g><title>${esc(p.date.split('-').reverse().join('.'))}: ${num.format(p.value)} ${u}/100 km (${num.format(p.km)} km)</title>
-      <circle cx="${pts[i][0]}" cy="${pts[i][1]}" r="3.5" class="bar cc"/>
-      <text x="${pts[i][0]}" y="${pts[i][1] - 6}" class="bar-val">${num.format(Math.round(p.value * 10) / 10)}</text>
-      <text x="${pts[i][0]}" y="${h - 6}" class="bar-lbl">${esc(p.date.slice(8, 10) + '.' + p.date.slice(5, 7))}</text></g>`).join('')}
-  </svg></div>`;
-}
-
 export function renderSettlement(from) {
+  if (!shown('settlement')) return '';
   const s = settlement({ setup: state.setup, entries: state.entries, bookings: state.bookings, from, today: today() });
   if (!s.usage.length) return '';
   return `
@@ -78,6 +44,7 @@ export function renderSettlement(from) {
 }
 
 export function renderWeekdays(from) {
+  if (!shown('weekdays')) return '';
   const rows = weekdayUsage({ setup: state.setup, bookings: state.bookings, from, today: today() }).filter((r) => r.weeks);
   if (!rows.length) return '';
   const ids = state.setup.people.map((p) => p.id);
@@ -93,25 +60,6 @@ export function renderWeekdays(from) {
     </section>`;
 }
 
-function renderKm(c, from) {
-  const t = kmTrend(state.entries, c.id, from, today());
-  const km = (v) => `${num.format(Math.round(v))} km`;
-  const arrow = !t || Math.abs(t.trend) < 0.1 ? '' : t.trend > 0 ? ' ↑' : ' ↓';
-  return `
-    <h4>Kilometerstand</h4>
-    ${t ? `<ul class="kv">
-      <li><span>Aktuell (${esc(t.date.split('-').reverse().join('.'))})</span><span>${km(t.odometer)}</span></li>
-      ${t.perMonth != null ? `<li><span>Ø pro Monat</span><span>${km(t.perMonth)}</span></li>
-      <li><span>Hochgerechnet pro Jahr</span><span>${km(t.perYear)}</span></li>` : ''}
-      ${t.recentPerMonth != null ? `<li><span>Tendenz (letzte 90 Tage)</span><span>${km(t.recentPerMonth)} /Monat${arrow}</span></li>` : ''}
-    </ul>` : ''}
-    <form class="km-form row" data-car="${esc(c.id)}">
-      <input name="odometer" inputmode="numeric" pattern="[0-9]*" placeholder="Gesamt-km" aria-label="Kilometerstand ${esc(c.name)}" required>
-      <button class="btn primary">Eintragen</button>
-    </form>
-    ${t && t.months.some((m) => m.value) ? `<h4>Kilometer pro Monat</h4>${barChart(t.months, c.id, km, 'Kilometer pro Monat')}` : ''}`;
-}
-
 export function submitKm(form) {
   const res = validateEntry({ car: form.dataset.car, type: 'odo', date: today(), odometer: new FormData(form).get('odometer'), note: '' }, state.setup, state.name);
   if (res.error) return toast(res.error);
@@ -121,43 +69,118 @@ export function submitKm(form) {
   toast('Kilometerstand gespeichert');
 }
 
-export function renderStats() {
-  const from = periodStart();
+export const STATS_TABS = [
+  { id: 'vehicle', label: 'Fahrzeug & km' },
+  { id: 'finance', label: 'Finanzen' }
+];
+
+/** Einstellbare Kennzahlen (Kacheln) und Abschnitte je Reiter */
+export const METRICS = {
+  vehicle: [
+    { id: 'odo', label: 'Kilometerstand' },
+    { id: 'km', label: 'Gefahrene km' },
+    { id: 'perMonth', label: 'Ø km pro Monat' },
+    { id: 'perYear', label: 'km pro Jahr (hochgerechnet)' },
+    { id: 'trend', label: 'Tendenz (90 Tage)' },
+    { id: 'consumption', label: 'Ø Verbrauch' },
+    { id: 'lastConsumption', label: 'Letzter Verbrauch' },
+    { id: 'minmax', label: 'Min / Max Verbrauch' },
+    { id: 'kmChart', kind: 'section', label: 'Diagramm: km pro Monat' },
+    { id: 'consChart', kind: 'section', label: 'Diagramm: Verbrauch' },
+    { id: 'odoList', kind: 'section', label: 'Letzte Kilometerstände' },
+    { id: 'weekdays', kind: 'extra', label: 'Werktage pro Woche' }
+  ],
+  finance: [
+    { id: 'overall', kind: 'extra', label: 'Summe aller Autos' },
+    { id: 'totalCost', label: 'Gesamtkosten' },
+    { id: 'totalPer100', label: 'Kosten pro 100 km' },
+    { id: 'energyPer100', label: 'Energiekosten pro 100 km' },
+    { id: 'fuelCost', label: 'Tanken / Laden' },
+    { id: 'avgPrice', label: 'Ø Preis' },
+    { id: 'breakdown', kind: 'section', label: 'Aufteilung nach Kostenart' },
+    { id: 'costChart', kind: 'section', label: 'Diagramm: Kosten pro Monat' },
+    { id: 'settlement', kind: 'extra', label: 'Abrechnung' }
+  ]
+};
+
+export const shown = (id) => !prefs.statsHidden.includes(id);
+
+/** Kennzahlen eines Reiters in der gespeicherten Reihenfolge (neue hinten) */
+export function ordered(tab, kind = 'tile') {
+  const order = prefs.statsOrder[tab] || [];
+  const pos = (id) => { const i = order.indexOf(id); return i < 0 ? 1e3 : i; };
+  return METRICS[tab].filter((m) => (m.kind || 'tile') === kind).sort((a, b) => pos(a.id) - pos(b.id));
+}
+
+/** HTML-Teile (id → html) in gespeicherter Reihenfolge zusammensetzen */
+export function arrange(tab, kind, parts) {
+  return ordered(tab, kind).map((m) => parts[m.id] || '').join('');
+}
+
+export function moveMetric(tab, id, dir) {
+  const kinds = ['tile', 'section', 'extra'];
+  const list = kinds.map((k) => ordered(tab, k).map((m) => m.id));
+  const group = list.find((l) => l.includes(id));
+  const i = group.indexOf(id), j = i + dir;
+  if (j < 0 || j >= group.length) return;
+  [group[i], group[j]] = [group[j], group[i]];
+  setPref('statsOrder', { ...prefs.statsOrder, [tab]: list.flat() });
+}
+
+export function toggleMetric(id, on) {
+  setPref('statsHidden', on ? prefs.statsHidden.filter((x) => x !== id) : [...prefs.statsHidden, id]);
+}
+
+export const fmtDate = (d) => d.split('-').reverse().join('.');
+
+/** Kennzahl-Kachel; `explain` erklärt die Berechnung hinter dem ⓘ. */
+export function tile(id, label, value, explain = '', extra = '') {
+  if (!shown(id)) return '';
+  return `<div class="tile">
+    <div class="tile-head"><span class="tile-label">${label}</span>${explain ? `<details class="explain"><summary aria-label="Berechnung: ${label}">i</summary><p>${explain}</p></details>` : ''}</div>
+    <div class="tile-val">${value}</div>${extra}
+  </div>`;
+}
+
+export function tiles(html) { return html.trim() ? `<div class="tiles">${html}</div>` : ''; }
+
+/** Gefilterte Autos (Filter „Alle“ oder ein bestimmtes Auto) */
+export function statsCars() {
+  const list = cars();
+  return state.statsCar === 'all' ? list : list.filter((c) => c.id === state.statsCar);
+}
+
+function renderCustomize() {
   return `
-    <section class="card">
-      <div class="seg">
-        ${PERIODS.map((p) => `<button class="seg-opt btn-seg ${p.id === state.statsPeriod ? 'active' : ''}" data-action="period" data-period="${p.id}" aria-pressed="${p.id === state.statsPeriod}">${p.label}</button>`).join('')}
-      </div>
+    <section class="card customize">
+      <div class="card-head"><h3>Kennzahlen anpassen</h3><button class="btn link" data-action="stats-reset">Zurücksetzen</button></div>
+      ${[['tile', 'Kacheln'], ['section', 'Abschnitte'], ['extra', 'Weitere']].map(([kind, title]) => {
+        const list = ordered(state.statsTab, kind);
+        if (!list.length) return '';
+        return `<h4>${title}</h4><ul class="checks">${list.map((m, i) => `<li>
+          <label class="check"><input type="checkbox" data-metric="${m.id}"${shown(m.id) ? ' checked' : ''}><span>${m.label}</span></label>
+          ${kind !== 'extra' ? `<span class="move">
+            <button class="icon-btn small" data-action="stats-move" data-id="${m.id}" data-dir="-1" aria-label="${m.label} nach oben"${i ? '' : ' disabled'}>↑</button>
+            <button class="icon-btn small" data-action="stats-move" data-id="${m.id}" data-dir="1" aria-label="${m.label} nach unten"${i < list.length - 1 ? '' : ' disabled'}>↓</button>
+          </span>` : ''}</li>`).join('')}</ul>`;
+      }).join('')}
+    </section>`;
+}
+
+export function renderStats() {
+  if (state.statsCar !== 'all' && !cars().some((c) => c.id === state.statsCar)) state.statsCar = 'all';
+  const from = periodStart();
+  const seg = (items, cur, action, key) => items.map((p) => `<button class="seg-opt btn-seg ${p.id === cur ? 'active' : ''}" data-action="${action}" data-${key}="${esc(p.id)}" aria-pressed="${p.id === cur}">${esc(p.label)}</button>`).join('');
+  return `
+    <div class="stats-tabs seg" role="group" aria-label="Auswertung">${seg(STATS_TABS, state.statsTab, 'stats-tab', 'tab')}</div>
+    <section class="card toolbar">
+      <div class="seg seg-sm">${seg(PERIODS, state.statsPeriod, 'period', 'period')}</div>
+      ${cars().length > 1 ? `<div class="chips">
+        <button class="fchip ${state.statsCar === 'all' ? 'active' : ''}" data-action="stats-car" data-car="all" aria-pressed="${state.statsCar === 'all'}">Alle</button>
+        ${cars().map((c) => `<button class="fchip cc ${state.statsCar === c.id ? 'active' : ''}"${cc(c.id)} data-action="stats-car" data-car="${esc(c.id)}" aria-pressed="${state.statsCar === c.id}"><i class="dot"></i>${esc(c.name)}</button>`).join('')}
+      </div>` : ''}
+      <button class="btn link customize-btn ${state.statsCustomize ? 'active' : ''}" data-action="stats-customize" aria-expanded="${state.statsCustomize}">${state.statsCustomize ? 'Fertig' : 'Anpassen'}</button>
     </section>
-    ${renderSettlement(from)}
-    ${renderWeekdays(from)}
-    ${cars().map((c) => {
-      const s = carStats(state.entries, c.id, from);
-      const u = unit(c.id);
-      const fmt = (v, suffix) => (v == null ? '–' : `${num.format(v)} ${suffix}`);
-      const series = consumptionSeries(state.entries, c.id, isCombustion(c.id)).filter((p) => p.date >= from);
-      const vals = series.map((p) => p.value);
-      return `
-        <section class="card car-card cc"${cc(c.id)}>
-          <h3>${esc(c.name)}</h3>
-          <div class="stat-big">${eur.format(s.totalCost)}<small>Gesamtkosten · ${s.count} Einträge</small></div>
-          <ul class="kv">
-            <li><span>Gefahrene km</span><span>${num.format(s.km)} km</span></li>
-            <li><span>Ø Gesamtkosten</span><span>${s.totalPer100 == null ? '–' : `${eur.format(s.totalPer100)} /100 km`}</span></li>
-            <li><span>${isCombustion(c.id) ? 'Tanken' : 'Laden'}</span><span>${eur.format(s.fuelCost)}</span></li>
-            ${s.byType.map((t) => `<li><span>${esc(t.label)}</span><span>${eur.format(t.value)}</span></li>`).join('')}
-            <li><span>Ø Verbrauch</span><span>${fmt(s.consumption, `${u}/100 km`)}</span></li>
-            ${series.length ? `<li><span>Letzter Verbrauch</span><span>${fmt(vals[vals.length - 1], `${u}/100 km`)}</span></li>
-            ${series.length > 1 ? `<li><span>Min / Max</span><span>${num.format(Math.min(...vals))} / ${fmt(Math.max(...vals), `${u}/100 km`)}</span></li>` : ''}` : ''}
-            <li><span>Ø Energiekosten</span><span>${s.costPer100 == null ? '–' : `${eur.format(s.costPer100)} /100 km`}</span></li>
-            <li><span>Ø Preis</span><span>${s.avgPrice == null ? '–' : `${num.format(s.avgPrice)} €/${u}`}</span></li>
-          </ul>
-          ${isCombustion(c.id) ? '<p class="hint">Verbrauch stimmt nur, wenn jedes Mal vollgetankt wurde.</p>' : ''}
-          ${s.fuelCount === 1 ? '<p class="muted small">Verbrauch ab zwei Tank-/Ladeeinträgen.</p>' : ''}
-          ${series.length > 1 ? `<h4>Verbrauch je ${isCombustion(c.id) ? 'Tankfüllung' : 'Ladung'}</h4>${lineChart(series, c.id, u)}` : ''}
-          ${renderKm(c, from)}
-          <h4>Kosten pro Monat</h4>
-          ${barChart(s.months, c.id)}
-        </section>`;
-    }).join('')}`;
+    ${state.statsCustomize ? renderCustomize() : ''}
+    ${state.statsTab === 'finance' ? renderFinance(from) : renderVehicle(from)}`;
 }
