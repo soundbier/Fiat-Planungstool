@@ -5,12 +5,13 @@ import { cc } from '../state.js';
 const MONTHS = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
 const dm = (iso) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.`;
 
-export function barChart(rawMonths, car, fmt = (v) => eur.format(v), label = 'Kosten pro Monat') {
+/** Balken je Monat; `avg` zeichnet eine gestrichelte Ø-Linie (Beschriftung liefert der Aufrufer) */
+export function barChart(rawMonths, car, fmt = (v) => eur.format(v), label = 'Kosten pro Monat', avg = 0) {
   if (!rawMonths.length) return '<p class="muted">Keine Daten.</p>';
   // Kurze Achsenbeschriftung: Monat (3 Buchstaben), Jahr nur beim ersten Balken und im Januar
   const months = rawMonths.map((m) => (m.key ? { ...m, short: MONTHS[Number(m.key.slice(5, 7)) - 1], year: `’${m.key.slice(2, 4)}` } : m));
   const barW = 20, gap = 14, h = 132, top = 16, bottom = 32;
-  const max = Math.max(1, ...months.map((m) => m.value));
+  const max = Math.max(1, avg, ...months.map((m) => m.value));
   const width = months.length * (barW + gap) + gap;
   const bars = months.map((m, i) => {
     const bh = (m.value / max) * (h - top - bottom);
@@ -25,7 +26,8 @@ export function barChart(rawMonths, car, fmt = (v) => eur.format(v), label = 'Ko
     </g>`;
   }).join('');
   return `<div class="chart-scroll"><svg class="chart"${cc(car)} viewBox="0 0 ${width} ${h}" width="${width}" height="${h}" role="img" aria-label="${esc(label)}">
-    <line x1="0" y1="${h - bottom + .5}" x2="${width}" y2="${h - bottom + .5}" class="axis"/>${bars}</svg></div>`;
+    <line x1="0" y1="${h - bottom + .5}" x2="${width}" y2="${h - bottom + .5}" class="axis"/>
+    ${avg > 0 ? `<line x1="0" y1="${h - bottom - (avg / max) * (h - top - bottom)}" x2="${width}" y2="${h - bottom - (avg / max) * (h - top - bottom)}" class="avg"><title>Ø ${fmt(avg)}</title></line>` : ''}${bars}</svg></div>`;
 }
 
 export function lineChart(series, car, u) {

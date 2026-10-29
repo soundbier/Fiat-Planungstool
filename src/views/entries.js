@@ -48,7 +48,7 @@ function entryForm(edit) {
         </div>
       </fieldset>
       <label class="field"><span>Art</span><select name="type">
-        ${TYPES.map((t) => `<option value="${t.id}"${t.id === type ? ' selected' : ''}>${esc(t.label)}</option>`).join('')}
+        ${TYPES.filter((t) => t.id !== 'odo' || type === 'odo').map((t) => `<option value="${t.id}"${t.id === type ? ' selected' : ''}>${esc(t.label)}</option>`).join('')}
       </select></label>
       <div class="field-row">
         <label class="field"><span>Datum</span><input type="date" name="date" value="${edit ? esc(edit.date) : isoDate(new Date())}" required></label>
@@ -196,6 +196,36 @@ export function submitEntry(form) {
   toast(rec ? `Gespeichert · ${intervalLabel(repeat)}` : 'Gespeichert');
 }
 
+/* ---------- Kilometerstand (Schnellerfassung je Auto, Datum heute) ---------- */
+
+function renderKmQuick(list) {
+  return `
+    <section class="section" aria-labelledby="km-title">
+      <h2 class="section-title" id="km-title">Kilometerstand</h2>
+      <div class="km-quick">${cars().map((c) => {
+        const last = list.find((e) => e.car === c.id && Number.isFinite(e.odometer));
+        return `<form class="km-form" data-car="${esc(c.id)}" aria-label="Kilometerstand ${esc(c.name)}">
+          <label class="km-car" for="km-${esc(c.id)}">${carBadge(c.id)}<span class="row-main"><span class="row-title">${esc(c.name)}</span>
+            <span class="row-sub">${last ? `${num.format(last.odometer)} km · ${dateNum(last.date).slice(0, 6)}` : 'noch kein Stand'}</span></span></label>
+          <input id="km-${esc(c.id)}" name="odometer" inputmode="numeric" pattern="[0-9]*" autocomplete="off" enterkeyhint="done" placeholder="km" required>
+          <button class="btn btn-icon" aria-label="Kilometerstand ${esc(c.name)} eintragen">${icon('check')}</button>
+        </form>`;
+      }).join('')}</div>
+    </section>`;
+}
+
+export function submitKm(form) {
+  const res = validateEntry({ car: form.dataset.car, type: 'odo', date: isoDate(new Date()), odometer: new FormData(form).get('odometer'), note: '' }, state.setup, state.name);
+  if (res.error) return toast(res.error);
+  const odo = /** @type {number} */ (res.data.odometer);
+  const issues = odometerIssues(state.entries, res.data.car, res.data.date, odo);
+  if (issues.length && !confirm(`${issues.join('\n')}\n\nTrotzdem speichern?`)) return;
+  const last = lastOdometer(state.entries, res.data.car);
+  addItem(state.code, 'entries', res.data).catch((e) => toast('Fehler: ' + e.message));
+  form.reset();
+  toast(`Kilometerstand gespeichert${last >= 0 && odo > last ? ` · +${num.format(odo - last)} km` : ''}`);
+}
+
 /* ---------- Verlauf ---------- */
 
 /** Verbrauch je Tank-/Ladeeintrag (id → l bzw. kWh/100 km) */
@@ -260,7 +290,11 @@ export function renderEntries() {
   }
   const loading = state.sync === 'connecting' && !list.length;
   return `
-    ${entryForm(null)}
+    ${renderKmQuick(list)}
+    <section class="section" aria-labelledby="costs-form-title">
+      <h2 class="section-title" id="costs-form-title">Kosten</h2>
+      ${entryForm(null)}
+    </section>
     <section class="section" aria-labelledby="history-title">
       <h2 class="section-title" id="history-title">Verlauf</h2>
       ${loading ? '<p class="muted">Lädt …</p>' : groups.length ? groups.map((g) => `
