@@ -104,7 +104,7 @@ export function render() {
       </div>
     </header>
     ${renderNotices()}
-    <main class="page">${view}</main>
+    <main class="page" data-tab="${state.tab}">${view}</main>
     <nav class="tabbar" aria-label="Hauptnavigation">
       ${TABS.map((t) => `<button class="tab" data-action="tab" data-tab="${t.id}"${t.id === state.tab ? ' aria-current="page"' : ''}>${icon(t.icon)}<span>${t.label}</span></button>`).join('')}
     </nav>

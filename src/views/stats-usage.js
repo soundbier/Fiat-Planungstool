@@ -26,12 +26,12 @@ function carUsage(u) {
     const open = !!state.expanded[k];
     return `
       <tr class="usage-month">
-        <th scope="row"><button class="disclosure" data-action="toggle" data-key="${k}" aria-expanded="${open}">
+        <th scope="row"><button class="disclosure" data-action="toggle" data-key="${k}" aria-expanded="${open}"${open ? ` aria-controls="${m.weeks.map((w) => `${k}-kw${w.kw}`).join(' ')}"` : ''}>
           <span><span class="usage-label">${esc(monthName(m.key))}</span><small>${m.workdays} ${m.workdays === 1 ? 'Werktag' : 'Werktage'}</small></span>${icon('chevron-down')}
         </button></th>${cells(m)}
       </tr>
-      ${open ? `<tr class="usage-wd" aria-hidden="true"><td><span class="wk"><span class="wk-label"></span><span class="wk-slots">${['M', 'D', 'M', 'D', 'F'].map((d) => `<span>${d}</span>`).join('')}</span></span></td><td colspan="${cols - 1}"></td></tr>
-        ${m.weeks.map((w) => `<tr class="usage-week">
+      ${open ? `<tr class="usage-wd" aria-hidden="true"><td><span class="wk"><span class="wk-label"></span><span class="wk-slots">${['Mo', 'Di', 'Mi', 'Do', 'Fr'].map((d) => `<span>${d}</span>`).join('')}</span></span></td><td colspan="${cols - 1}"></td></tr>
+        ${m.weeks.map((w) => `<tr class="usage-week" id="${k}-kw${w.kw}">
           <th scope="row"><span class="wk"><span class="wk-label">KW ${w.kw}</span>${slots(w)}</span></th>${cells(w)}
         </tr>`).join('')}` : ''}`;
   }).join('');
@@ -50,10 +50,18 @@ function carUsage(u) {
 /** Bereich Nutzung: gebuchte Werktage je Auto und Monat, aufklappbar bis zur Woche */
 export function renderUsage(from) {
   const list = workdayUsage({ setup: state.setup, bookings: state.bookings, from, today: today() }).filter((u) => u.months.length);
-  if (!list.length) return '';
+  const head = '<h2 class="area-title" id="area-usage">Nutzung</h2>';
+  if (!list.length) {
+    return `
+    <section class="area" aria-labelledby="area-usage">
+      ${head}
+      <p class="muted">Keine Buchungen im Zeitraum.</p>
+      <button class="btn-quiet" data-action="tab" data-tab="calendar">Zum Kalender</button>
+    </section>`;
+  }
   return `
     <section class="area" aria-labelledby="area-usage">
-      <h2 class="area-title" id="area-usage">Nutzung</h2>
+      ${head}
       ${list.map(carUsage).join('')}
       <p class="footnote">Gebuchte Werktage Mo–Fr bis heute, ab der ersten Buchung im Zeitraum. „Alle“ zählt für jede Person. Monat antippen für die Wochen; eine Woche über den Monatswechsel zählt in jedem Monat nur mit dessen Tagen.</p>
     </section>`;
