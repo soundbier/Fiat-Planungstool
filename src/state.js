@@ -10,7 +10,7 @@ export const LS_MEMBER = 'autoplaner.member';
 
 export const SWATCHES = ['#2c5d8f', '#a8324a', '#1f7a6d', '#7a4bb0', '#c2581b', '#3b7d2a', '#b0477f', '#4a4a48'];
 
-export const DEFAULT_PREFS = { theme: 'system', scheme: 'warm', size: 'normal', startTab: 'calendar', calView: 'month', statsHidden: [], colors: {} };
+export const DEFAULT_PREFS = { theme: 'system', scheme: 'warm', size: 'normal', startTab: 'calendar', calView: 'month', statsHidden: [], statsOrder: {}, colors: {} };
 
 /**
  * Gesamter UI-Zustand. Firestore-Daten werden per Snapshot-Listener hineingeschrieben (household.js).
@@ -64,7 +64,7 @@ export const state = {
 function loadPrefs() {
   try {
     const p = JSON.parse(localStorage.getItem(LS_PREFS)) || {};
-    return { ...DEFAULT_PREFS, ...p, statsHidden: Array.isArray(p.statsHidden) ? p.statsHidden : [], colors: { ...DEFAULT_PREFS.colors, ...p.colors } };
+    return { ...DEFAULT_PREFS, ...p, statsHidden: Array.isArray(p.statsHidden) ? p.statsHidden : [], statsOrder: p.statsOrder && typeof p.statsOrder === 'object' ? p.statsOrder : {}, colors: { ...DEFAULT_PREFS.colors, ...p.colors } };
   } catch { return { ...DEFAULT_PREFS, colors: { ...DEFAULT_PREFS.colors } }; }
 }
 

@@ -2,9 +2,12 @@ import { esc, eur, num } from '../lib/util.js';
 import { cc } from '../state.js';
 
 /* ---------- Diagramme (SVG) ---------- */
-export function barChart(months, car, fmt = (v) => eur.format(v), label = 'Kosten pro Monat') {
-  if (!months.length) return '<p class="muted">Keine Daten.</p>';
-  const barW = 28, gap = 10, h = 140, top = 18, bottom = 22;
+const MONTHS = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+export function barChart(rawMonths, car, fmt = (v) => eur.format(v), label = 'Kosten pro Monat') {
+  if (!rawMonths.length) return '<p class="muted">Keine Daten.</p>';
+  // Kurze Achsenbeschriftung: Monat (3 Buchstaben), Jahr nur beim ersten Balken und im Januar
+  const months = rawMonths.map((m) => (m.key ? { ...m, short: MONTHS[Number(m.key.slice(5, 7)) - 1], year: `’${m.key.slice(2, 4)}` } : m));
+  const barW = 28, gap = 10, h = 150, top = 18, bottom = 32;
   const max = Math.max(1, ...months.map((m) => m.value));
   const width = months.length * (barW + gap) + gap;
   const bars = months.map((m, i) => {
@@ -15,7 +18,8 @@ export function barChart(months, car, fmt = (v) => eur.format(v), label = 'Koste
       <title>${esc(m.label)}: ${fmt(m.value)}</title>
       <rect x="${x}" y="${y}" width="${barW}" height="${Math.max(bh, m.value > 0 ? 1 : 0)}" rx="2" class="bar cc"/>
       ${m.value > 0 ? `<text x="${x + barW / 2}" y="${y - 4}" class="bar-val">${Math.round(m.value)}</text>` : ''}
-      <text x="${x + barW / 2}" y="${h - 6}" class="bar-lbl">${esc(m.label)}</text>
+      <text x="${x + barW / 2}" y="${h - 18}" class="bar-lbl">${esc(m.short || m.label)}</text>
+      ${m.year && (i === 0 || m.short === 'Jan') ? `<text x="${x + barW / 2}" y="${h - 5}" class="bar-lbl bar-year">${m.year}</text>` : ''}
     </g>`;
   }).join('');
   return `<div class="chart-scroll"><svg class="chart"${cc(car)} viewBox="0 0 ${width} ${h}" width="${width}" height="${h}" role="img" aria-label="${label}">

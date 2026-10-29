@@ -553,10 +553,16 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 .card-head h3 { margin: 0; font-size: var(--fs-lg); color: var(--text); text-transform: none; letter-spacing: 0; }
 .customize .card-head h3 { font-size: var(--fs-xs); color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
 .customize .card-head .btn { min-height: 0; padding: 0; font-size: var(--fs-sm); }
-.checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: var(--space-1) var(--space-3); }
+.checks { list-style: none; padding: 0; margin: 0; }
+.checks li { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); border-top: 1px solid var(--divider); }
+.checks li:first-child { border-top: 0; }
+.move { display: flex; }
+.move .icon-btn:disabled { opacity: .25; }
+.customize h4:first-of-type { margin-top: 0; }
+.chart .bar-year { font-size: 9px; opacity: .7; }
 label.check { flex-direction: row; align-items: center; gap: var(--space-2); color: var(--text); font-size: var(--fs-md); padding: 4px 0; }
 label.check input { width: 18px; height: 18px; min-height: 0; accent-color: var(--primary); }
-.km-form.inline { display: flex; gap: var(--space-2); }
+.km-form.inline { display: flex; gap: var(--space-2); flex-shrink: 0; }
 .km-form.inline input { width: 96px; min-height: var(--control-h-sm); padding: 4px 10px; }
 .btn.sm { min-height: var(--control-h-sm); padding: 4px var(--space-3); font-size: var(--fs-sm); }
 

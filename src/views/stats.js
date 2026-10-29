@@ -80,30 +80,52 @@ export const METRICS = {
     { id: 'odo', label: 'Kilometerstand' },
     { id: 'km', label: 'Gefahrene km' },
     { id: 'perMonth', label: 'Ø km pro Monat' },
-    { id: 'perYear', label: 'Hochrechnung pro Jahr' },
+    { id: 'perYear', label: 'km pro Jahr (hochgerechnet)' },
     { id: 'trend', label: 'Tendenz (90 Tage)' },
     { id: 'consumption', label: 'Ø Verbrauch' },
     { id: 'lastConsumption', label: 'Letzter Verbrauch' },
     { id: 'minmax', label: 'Min / Max Verbrauch' },
-    { id: 'kmChart', label: 'Diagramm: km pro Monat' },
-    { id: 'consChart', label: 'Diagramm: Verbrauch' },
-    { id: 'odoList', label: 'Letzte Kilometerstände' },
-    { id: 'weekdays', label: 'Werktage pro Woche' }
+    { id: 'kmChart', kind: 'section', label: 'Diagramm: km pro Monat' },
+    { id: 'consChart', kind: 'section', label: 'Diagramm: Verbrauch' },
+    { id: 'odoList', kind: 'section', label: 'Letzte Kilometerstände' },
+    { id: 'weekdays', kind: 'extra', label: 'Werktage pro Woche' }
   ],
   finance: [
-    { id: 'overall', label: 'Summe aller Autos' },
+    { id: 'overall', kind: 'extra', label: 'Summe aller Autos' },
     { id: 'totalCost', label: 'Gesamtkosten' },
     { id: 'totalPer100', label: 'Kosten pro 100 km' },
     { id: 'energyPer100', label: 'Energiekosten pro 100 km' },
     { id: 'fuelCost', label: 'Tanken / Laden' },
     { id: 'avgPrice', label: 'Ø Preis' },
-    { id: 'breakdown', label: 'Aufteilung nach Kostenart' },
-    { id: 'costChart', label: 'Diagramm: Kosten pro Monat' },
-    { id: 'settlement', label: 'Abrechnung' }
+    { id: 'breakdown', kind: 'section', label: 'Aufteilung nach Kostenart' },
+    { id: 'costChart', kind: 'section', label: 'Diagramm: Kosten pro Monat' },
+    { id: 'settlement', kind: 'extra', label: 'Abrechnung' }
   ]
 };
 
 export const shown = (id) => !prefs.statsHidden.includes(id);
+
+/** Kennzahlen eines Reiters in der gespeicherten Reihenfolge (neue hinten) */
+export function ordered(tab, kind = 'tile') {
+  const order = prefs.statsOrder[tab] || [];
+  const pos = (id) => { const i = order.indexOf(id); return i < 0 ? 1e3 : i; };
+  return METRICS[tab].filter((m) => (m.kind || 'tile') === kind).sort((a, b) => pos(a.id) - pos(b.id));
+}
+
+/** HTML-Teile (id → html) in gespeicherter Reihenfolge zusammensetzen */
+export function arrange(tab, kind, parts) {
+  return ordered(tab, kind).map((m) => parts[m.id] || '').join('');
+}
+
+export function moveMetric(tab, id, dir) {
+  const kinds = ['tile', 'section', 'extra'];
+  const list = kinds.map((k) => ordered(tab, k).map((m) => m.id));
+  const group = list.find((l) => l.includes(id));
+  const i = group.indexOf(id), j = i + dir;
+  if (j < 0 || j >= group.length) return;
+  [group[i], group[j]] = [group[j], group[i]];
+  setPref('statsOrder', { ...prefs.statsOrder, [tab]: list.flat() });
+}
 
 export function toggleMetric(id, on) {
   setPref('statsHidden', on ? prefs.statsHidden.filter((x) => x !== id) : [...prefs.statsHidden, id]);
@@ -131,10 +153,17 @@ export function statsCars() {
 function renderCustomize() {
   return `
     <section class="card customize">
-      <div class="card-head"><h3>Angezeigte Kennzahlen</h3><button class="btn link" data-action="stats-reset">Alle zeigen</button></div>
-      <div class="checks">
-        ${METRICS[state.statsTab].map((m) => `<label class="check"><input type="checkbox" data-metric="${m.id}"${shown(m.id) ? ' checked' : ''}><span>${m.label}</span></label>`).join('')}
-      </div>
+      <div class="card-head"><h3>Kennzahlen anpassen</h3><button class="btn link" data-action="stats-reset">Zurücksetzen</button></div>
+      ${[['tile', 'Kacheln'], ['section', 'Abschnitte'], ['extra', 'Weitere']].map(([kind, title]) => {
+        const list = ordered(state.statsTab, kind);
+        if (!list.length) return '';
+        return `<h4>${title}</h4><ul class="checks">${list.map((m, i) => `<li>
+          <label class="check"><input type="checkbox" data-metric="${m.id}"${shown(m.id) ? ' checked' : ''}><span>${m.label}</span></label>
+          ${kind !== 'extra' ? `<span class="move">
+            <button class="icon-btn small" data-action="stats-move" data-id="${m.id}" data-dir="-1" aria-label="${m.label} nach oben"${i ? '' : ' disabled'}>↑</button>
+            <button class="icon-btn small" data-action="stats-move" data-id="${m.id}" data-dir="1" aria-label="${m.label} nach unten"${i < list.length - 1 ? '' : ' disabled'}>↓</button>
+          </span>` : ''}</li>`).join('')}</ul>`;
+      }).join('')}
     </section>`;
 }
 
